@@ -15,6 +15,7 @@ INSTALL_DIR="/usr/local/bin"
 CERT_DIR="/etc/sing-box/certs"
 LINK_DIR="/etc/sing-box/links"
 KEY_FILE="/etc/sing-box/keys.txt"
+CORE_TYPE_FILE="/etc/sing-box/core_type.txt"
 
 # 链接文件路径
 ALL_LINKS_FILE="${LINK_DIR}/all.txt"
@@ -29,6 +30,7 @@ ANYTLS_LINKS_FILE="${LINK_DIR}/anytls.txt"
 SCRIPT_PATH=$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")
 
 # ==================== 全局变量 ====================
+CORE_TYPE="sing-box"  # 默认 sing-box，可选择 xray
 INBOUNDS_JSON=""
 ALL_LINKS_TEXT=""
 SERVER_IP=""
@@ -242,10 +244,42 @@ EOF
     mkdir -p "$(dirname "${LOGROTATE_FLAG}")"
     touch "${LOGROTATE_FLAG}"
 }
-# ==================== 安装 sing-box ====================
-install_singbox() {
-    print_info "检查 sing-box 安装状态（支持断点续装）..."
+# ==================== 核心选择 ====================
+select_core_type() {
+    echo ""
+    echo -e "${CYAN}╔═══════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║              ${GREEN}选择代理核心${CYAN}                   ║${NC}"
+    echo -e "${CYAN}╚═══════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    echo -e "  ${GREEN}[1]${NC} sing-box (推荐，功能最完整)"
+    echo ""
+    echo -e "  ${GREEN}[2]${NC} xray"
+    echo ""
+    read -p "请选择代理核心 (1-2，默认1): " core_choice
+    core_choice=${core_choice:-1}
+    
+    if [[ "$core_choice" == "2" ]]; then
+        CORE_TYPE="xray"
+    else
+        CORE_TYPE="sing-box"
+    fi
+    
+    mkdir -p "$(dirname "${CORE_TYPE_FILE}")"
+    echo "$CORE_TYPE" > "${CORE_TYPE_FILE}"
+    print_success "已选择核心: ${CORE_TYPE}"
+}
 
+load_core_type() {
+    if [[ -f "${CORE_TYPE_FILE}" ]]; then
+        CORE_TYPE=$(cat "${CORE_TYPE_FILE}" | tr -d '[:space:]')
+        [[ "$CORE_TYPE" != "sing-box" && "$CORE_TYPE" != "xray" ]] && CORE_TYPE="sing-box"
+    fi
+}
+# ==================== 安装代理核心 ====================
+install_singbox() {
+    # 先检查是否需要加载核心类型
+    load_core_type
+    print_info "检查 ${CORE_TYPE} 安装状态（支持断点续装）..."
     # ---------- 1. 安装系统依赖（检查 jq 即可代表基础工具） ----------
     if ! command -v jq &>/dev/null; then
         print_info "缺少基础依赖，开始安装..."
@@ -263,63 +297,117 @@ install_singbox() {
         print_success "基础依赖已就绪"
     fi
 
-    # ---------- 2. 检查 sing-box 二进制是否可执行 ----------
+    # ---------- 2. 检查二进制是否可执行 ----------
     local need_download=1
-    if [[ -x "${INSTALL_DIR}/sing-box" ]]; then
+    local core_bin="${INSTALL_DIR}/${CORE_TYPE}"
+    if [[ -x "${core_bin}" ]]; then
         # 尝试运行版本检查，若返回正常则认为可用
-        if ${INSTALL_DIR}/sing-box version >/dev/null 2>&1; then
-            local version=$(${INSTALL_DIR}/sing-box version 2>&1 | grep -oP 'sing-box version \K[0-9.]+' || echo "unknown")
-            print_success "sing-box 已安装且可执行 (版本: ${version})"
-            need_download=0
+        if [[ "${CORE_TYPE}" == "sing-box" ]]; then
+            if ${core_bin} version >/dev/null 2>&1; then
+                local version=$(${core_bin} version 2>&1 | grep -oP 'sing-box version \K[0-9.]+' || echo "unknown")
+                print_success "${CORE_TYPE} 已安装且可执行 (版本: ${version})"
+                need_download=0
+            fi
         else
-            print_warning "检测到损坏的 sing-box，将重新下载安装"
-            rm -f "${INSTALL_DIR}/sing-box"
+            if ${core_bin} version >/dev/null 2>&1; then
+                print_success "${CORE_TYPE} 已安装且可执行"
+                need_download=0
+            fi
+        fi
+        if [[ $need_download -eq 1 ]]; then
+            print_warning "检测到损坏的 ${CORE_TYPE}，将重新下载安装"
+            rm -f "${core_bin}"
         fi
     fi
 
     # ---------- 3. 下载、解压、安装二进制（如需要） ----------
     if [[ $need_download -eq 1 ]]; then
-        local retry=0
-        local max_retries=3
-        while [[ $retry -lt $max_retries ]]; do
-            LATEST=$(curl -s --connect-timeout 10 "https://api.github.com/repos/SagerNet/sing-box/releases/latest" | jq -r '.tag_name' | sed 's/v//')
-            [[ -n "$LATEST" ]] && break
-            ((retry++))
-            [[ $retry -lt $max_retries ]] && sleep 2
-        done
-        [[ -z "$LATEST" ]] && LATEST="1.12.0"
-        print_info "目标版本: ${LATEST}"
+        if [[ "${CORE_TYPE}" == "sing-box" ]]; then
+            local retry=0
+            local max_retries=3
+            while [[ $retry -lt $max_retries ]]; do
+                LATEST=$(curl -s --connect-timeout 10 "https://api.github.com/repos/SagerNet/sing-box/releases/latest" | jq -r '.tag_name' | sed 's/v//')
+                [[ -n "$LATEST" ]] && break
+                ((retry++))
+                [[ $retry -lt $max_retries ]] && sleep 2
+            done
+            [[ -z "$LATEST" ]] && LATEST="1.12.0"
+            print_info "目标版本: ${LATEST}"
 
-        # 清理可能残留的半成品
-        rm -rf /tmp/sb.tar.gz /tmp/sing-box-${LATEST}-linux-${ARCH}
-        TEMP_FILES+=("/tmp/sb.tar.gz" "/tmp/sing-box-${LATEST}-linux-${ARCH}")
+            # 清理可能残留的半成品
+            rm -rf /tmp/sb.tar.gz /tmp/sing-box-${LATEST}-linux-${ARCH}
+            TEMP_FILES+=("/tmp/sb.tar.gz" "/tmp/sing-box-${LATEST}-linux-${ARCH}")
 
-        print_info "下载 sing-box (${LATEST} linux-${ARCH}) ..."
-        wget -q --show-progress -O /tmp/sb.tar.gz \
-            "https://github.com/SagerNet/sing-box/releases/download/v${LATEST}/sing-box-${LATEST}-linux-${ARCH}.tar.gz" 2>&1
-        if [[ ! -f /tmp/sb.tar.gz ]]; then
-            print_error "下载失败，请检查网络后重新运行脚本"
-            return 1
-        fi
+            print_info "下载 sing-box (${LATEST} linux-${ARCH}) ..."
+            wget -q --show-progress -O /tmp/sb.tar.gz \
+                "https://github.com/SagerNet/sing-box/releases/download/v${LATEST}/sing-box-${LATEST}-linux-${ARCH}.tar.gz" 2>&1
+            if [[ ! -f /tmp/sb.tar.gz ]]; then
+                print_error "下载失败，请检查网络后重新运行脚本"
+                return 1
+            fi
 
-        # 小内存机器解压时很可能被杀，解压前确保文件完整
-        print_info "解压 sing-box ..."
-        if tar -xzf /tmp/sb.tar.gz -C /tmp 4>/dev/null; then
-            rm -f /tmp/sb.tar.gz
+            print_info "解压 sing-box ..."
+            if tar -xzf /tmp/sb.tar.gz -C /tmp 4>/dev/null; then
+                rm -f /tmp/sb.tar.gz
+            else
+                print_error "解压失败（可能内存不足被 kill），请增加 swap 后重新运行脚本"
+                rm -f /tmp/sb.tar.gz
+                return 1
+            fi
+
+            if [[ -f "/tmp/sing-box-${LATEST}-linux-${ARCH}/sing-box" ]]; then
+                install -Dm755 "/tmp/sing-box-${LATEST}-linux-${ARCH}/sing-box" "${core_bin}"
+                rm -rf "/tmp/sing-box-${LATEST}-linux-${ARCH}"
+                print_success "sing-box 二进制安装完成"
+            else
+                print_error "解压后未找到 sing-box 二进制，请检查"
+                return 1
+            fi
         else
-            print_error "解压失败（可能内存不足被 kill），请增加 swap 后重新运行脚本"
-            rm -f /tmp/sb.tar.gz
-            return 1
-        fi
+            # 下载 xray
+            local retry=0
+            local max_retries=3
+            local latest_tag=""
+            while [[ $retry -lt $max_retries ]]; do
+                latest_tag=$(curl -sL "https://api.github.com/repos/XTLS/Xray-core/releases/latest" | grep '"tag_name"' | tr ',' '\n' | grep '"tag_name"' | sed 's/.*: "\(.*\)".*/\1')
+                [[ -n "$latest_tag" ]] && break
+                ((retry++))
+                [[ $retry -lt $max_retries ]] && sleep 2
+            done
+            [[ -z "$latest_tag" ]] && latest_tag="v1.8.0"
 
-        # 安装二进制
-        if [[ -f "/tmp/sing-box-${LATEST}-linux-${ARCH}/sing-box" ]]; then
-            install -Dm755 "/tmp/sing-box-${LATEST}-linux-${ARCH}/sing-box" "${INSTALL_DIR}/sing-box"
-            rm -rf "/tmp/sing-box-${LATEST}-linux-${ARCH}"
-            print_success "sing-box 二进制安装完成"
-        else
-            print_error "解压后未找到 sing-box 二进制，请检查"
-            return 1
+            local arch_suffix=""
+            case "$ARCH" in
+                amd64) arch_suffix="64" ;;
+                arm64) arch_suffix="arm64-v8a" ;;
+                *) print_error "不支持的架构 $ARCH"; return 1 ;;
+            esac
+
+            print_info "下载 xray (${latest_tag} linux-${arch_suffix}) ..."
+            wget -q --show-progress -O /tmp/xray.zip \
+                "https://github.com/XTLS/Xray-core/releases/download/${latest_tag}/Xray-linux-${arch_suffix}.zip" 2>&1
+            if [[ ! -f /tmp/xray.zip ]]; then
+                print_error "下载失败，请检查网络后重新运行脚本"
+                return 1
+            fi
+
+            print_info "解压 xray ..."
+            if unzip -d /tmp/xray_tmp /tmp/xray.zip >/dev/null 2>&1; then
+                rm -f /tmp/xray.zip
+            else
+                print_error "解压失败，请检查"
+                rm -f /tmp/xray.zip
+                return 1
+            fi
+
+            if [[ -f "/tmp/xray_tmp/xray" ]]; then
+                install -Dm755 "/tmp/xray_tmp/xray" "${core_bin}"
+                rm -rf "/tmp/xray_tmp"
+                print_success "xray 二进制安装完成"
+            else
+                print_error "解压后未找到 xray 二进制，请检查"
+                return 1
+            fi
         fi
     fi
 
@@ -329,48 +417,69 @@ install_singbox() {
         if [[ ! -f /etc/init.d/sing-box ]]; then
             need_service=1
         else
-            # 如果服务文件不含预期的日志重定向命令，则重写
-            if ! grep -q "/var/log/sing-box.log" /etc/init.d/sing-box; then
+            # 检查服务文件是否匹配当前核心
+            local current_cmd=$(grep -o "exec.*" /etc/init.d/sing-box || true)
+            if [[ "$current_cmd" != *"${CORE_TYPE}"* ]]; then
                 need_service=1
             fi
         fi
     else
         if [[ ! -f /etc/systemd/system/sing-box.service ]]; then
             need_service=1
+        else
+            # 检查服务文件是否匹配当前核心
+            if ! grep -q "${CORE_TYPE}" /etc/systemd/system/sing-box.service; then
+                need_service=1
+            fi
         fi
     fi
 
     if [[ $need_service -eq 1 ]]; then
         print_info "创建/更新服务文件..."
         if [[ $ALPINE -eq 1 ]]; then
-            cat > /etc/init.d/sing-box << 'EOF'
+            if [[ "${CORE_TYPE}" == "sing-box" ]]; then
+                cat > /etc/init.d/sing-box << 'EOF'
 #!/sbin/openrc-run
-
 name="sing-box"
 description="sing-box service"
-
 command="/bin/sh"
 command_args="-c 'exec /usr/local/bin/sing-box run -c /etc/sing-box/config.json >> /var/log/sing-box.log 2>&1'"
 pidfile="/run/${name}.pid"
 required_files="/etc/sing-box/config.json"
-
 supervisor="supervise-daemon"
 respawn_delay=10
 respawn_max=0
-
 depend() {
     need net
     after firewall
 }
 EOF
+            else
+                cat > /etc/init.d/sing-box << 'EOF'
+#!/sbin/openrc-run
+name="xray"
+description="xray service"
+command="/bin/sh"
+command_args="-c 'exec /usr/local/bin/xray run -config /etc/sing-box/config.json >> /var/log/sing-box.log 2>&1'"
+pidfile="/run/${name}.pid"
+required_files="/etc/sing-box/config.json"
+supervisor="supervise-daemon"
+respawn_delay=10
+respawn_max=0
+depend() {
+    need net
+    after firewall
+}
+EOF
+            fi
             chmod +x /etc/init.d/sing-box
             print_success "OpenRC 服务已创建"
         else
-            cat > /etc/systemd/system/sing-box.service << 'EOFSVC'
+            if [[ "${CORE_TYPE}" == "sing-box" ]]; then
+                cat > /etc/systemd/system/sing-box.service << 'EOFSVC'
 [Unit]
 Description=sing-box service
 After=network.target
-
 [Service]
 Type=simple
 ExecStart=/usr/local/bin/sing-box run -c /etc/sing-box/config.json
@@ -378,10 +487,24 @@ Restart=on-failure
 RestartSec=10s
 LimitNOFILE=infinity
 Environment=ENABLE_DEPRECATED_LEGACY_DNS_SERVERS=true
-
 [Install]
 WantedBy=multi-user.target
 EOFSVC
+            else
+                cat > /etc/systemd/system/sing-box.service << 'EOFSVC'
+[Unit]
+Description=xray service
+After=network.target
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/xray run -config /etc/sing-box/config.json
+Restart=on-failure
+RestartSec=10s
+LimitNOFILE=infinity
+[Install]
+WantedBy=multi-user.target
+EOFSVC
+            fi
             systemctl daemon-reload
             print_success "systemd 服务已创建"
         fi
@@ -395,7 +518,7 @@ EOFSVC
     # ---------- 6. 配置日志清理（首次安装自动设置） ----------
     setup_log_cleanup
 
-    print_success "sing-box 安装/修复完成"
+    print_success "${CORE_TYPE} 安装/修复完成"
 }
 # ==================== 证书生成 ====================
 gen_cert_for_sni() {
@@ -3028,6 +3151,37 @@ show_main_menu() {
     echo -e "${CYAN}╚═══════════════════════════════════════════════════════╝${NC}"
     echo ""
     
+    # 显示服务运行状态
+    local sb_status="未运行"
+    local sb_color="${RED}"
+    if svc_is_active; then
+        sb_status="运行中"
+        sb_color="${GREEN}"
+    fi
+    
+    local argo_status="未安装"
+    local argo_color="${YELLOW}"
+    if [[ -f /usr/bin/argo ]] || [[ -d /opt/argo ]]; then
+        argo_status="已安装"
+        argo_color="${GREEN}"
+        # 检查 Argo 服务是否运行
+        if [[ -f /etc/alpine-release ]]; then
+            if rc-service argo-core status 2>/dev/null | grep -q "started"; then
+                argo_status="运行中"
+            fi
+        else
+            if systemctl is-active --quiet argo-core.service 2>/dev/null; then
+                argo_status="运行中"
+            fi
+        fi
+    fi
+    
+    echo -e "${YELLOW}服务状态:${NC}"
+    echo -e "  当前核心: ${GREEN}${CORE_TYPE}${NC}"
+    echo -e "  Sing-Box: ${sb_color}${sb_status}${NC}"
+    echo -e "  Argo Tunnel: ${argo_color}${argo_status}${NC}"
+    echo ""
+    
     # 显示出入站配置
     echo -e "${YELLOW}当前出入站配置:${NC}"
     if [[ -n "$SERVER_IP" ]]; then
@@ -3170,6 +3324,8 @@ show_main_menu() {
     echo -e "  ${GREEN}[6]${NC} 一键删除脚本并退出"
     echo ""
     echo -e "  ${GREEN}[7]${NC} Argo Tunnel 管理"
+    echo ""
+    echo -e "  ${GREEN}[8]${NC} 切换代理核心"
     echo ""
     echo -e "  ${GREEN}[0]${NC} 退出脚本"
     echo ""
@@ -3482,7 +3638,7 @@ main_menu() {
         load_ip_config
         
         show_main_menu
-        read -p "请选择 [0-7]: " m_choice
+        read -p "请选择 [0-8]: " m_choice
         
         case $m_choice in
             1)
@@ -3505,6 +3661,9 @@ main_menu() {
                 ;;
             7)
                 argo_menu
+                ;;
+            8)
+                select_core_type
                 ;;
             0)
                 print_info "已退出"
@@ -4331,6 +4490,8 @@ main() {
         exit 1
     fi
     
+    # 先加载核心类型
+    load_core_type
     detect_system
     install_singbox
     mkdir -p /etc/sing-box
