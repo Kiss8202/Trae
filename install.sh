@@ -3325,8 +3325,6 @@ show_main_menu() {
     echo ""
     echo -e "  ${GREEN}[7]${NC} Argo Tunnel 管理"
     echo ""
-    echo -e "  ${GREEN}[8]${NC} 切换代理核心"
-    echo ""
     echo -e "  ${GREEN}[0]${NC} 退出脚本"
     echo ""
 }
@@ -3355,14 +3353,16 @@ config_and_view_menu() {
         echo ""
         echo -e "  ${GREEN}[8]${NC} 查看 AnyTLS 节点"
         echo ""
-        echo -e "  ${GREEN}[9]${NC} 删除单个节点"
+        echo -e "  ${GREEN}[9]${NC} 查看 Argo 节点"
         echo ""
-        echo -e "  ${GREEN}[10]${NC} 删除全部节点"
+        echo -e "  ${GREEN}[10]${NC} 删除单个节点"
+        echo ""
+        echo -e "  ${GREEN}[11]${NC} 删除全部节点"
         echo ""
         echo -e "  ${GREEN}[0]${NC} 返回主菜单"
         echo ""
         
-        read -p "请选择 [0-10]: " cv_choice
+        read -p "请选择 [0-11]: " cv_choice
         
         case $cv_choice in
             1)
@@ -3461,10 +3461,31 @@ config_and_view_menu() {
                 read -p "按回车返回..." _
                 ;;
             9)
-                delete_single_node
+                clear
+                echo -e "${YELLOW}Argo Tunnel 节点:${NC}"
+                echo ""
+                if [[ ! -f /usr/bin/argo ]]; then
+                    echo "(Argo 未安装)"
+                elif [[ ! -f /opt/argo/argo.log ]]; then
+                    echo "(Argo 未配置或未运行)"
+                else
+                    # 读取 argo 日志中的链接信息
+                    if grep -q "vmess://" /opt/argo/argo.log 2>/dev/null; then
+                        grep "vmess://" /opt/argo/argo.log | tail -5
+                    elif grep -q "vless://" /opt/argo/argo.log 2>/dev/null; then
+                        grep "vless://" /opt/argo/argo.log | tail -5
+                    else
+                        echo "(未找到 Argo 节点链接)"
+                    fi
+                fi
+                echo ""
                 read -p "按回车返回..." _
                 ;;
             10)
+                delete_single_node
+                read -p "按回车返回..." _
+                ;;
+            11)
                 delete_all_nodes
                 read -p "按回车返回..." _
                 ;;
@@ -3638,8 +3659,8 @@ main_menu() {
         load_ip_config
         
         show_main_menu
-        read -p "请选择 [0-8]: " m_choice
-        
+        read -p "请选择 [0-7]: " m_choice
+
         case $m_choice in
             1)
                 show_menu
@@ -3661,9 +3682,6 @@ main_menu() {
                 ;;
             7)
                 argo_menu
-                ;;
-            8)
-                select_core_type
                 ;;
             0)
                 print_info "已退出"
