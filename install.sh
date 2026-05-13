@@ -4873,6 +4873,27 @@ show_main_menu() {
 # ==================== 协议选择菜单 ====================
 
 show_protocol_menu() {
+    # 首先检查核心是否已安装
+    if [[ "$CORE_TYPE" == "sing-box" ]]; then
+        if [[ ! -f "${SB_DIR}/sing-box" ]]; then
+            print_warning "sing-box 核心未安装，正在自动安装..."
+            install_singbox
+            if [[ $? -ne 0 ]]; then
+                print_error "sing-box 安装失败"
+                return 1
+            fi
+        fi
+    else
+        if [[ ! -f "${XRAY_DIR}/xray" ]]; then
+            print_warning "xray 核心未安装，正在自动安装..."
+            install_xray
+            if [[ $? -ne 0 ]]; then
+                print_error "xray 安装失败"
+                return 1
+            fi
+        fi
+    fi
+
     echo ""
     echo -e "${CYAN}╔═══════════════════════════════════════════════════════════╗${NC}"
     echo -e "${CYAN}║                    ${GREEN}选择协议${CYAN}                          ║${NC}"
