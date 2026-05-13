@@ -3324,13 +3324,13 @@ config_and_view_menu() {
 
 # ==================== 完整卸载 ====================
 delete_self() {
-    echo -e "${YELLOW}此操作将卸载 sing-box、删除所有节点配置、证书、快捷命令 sb 和当前脚本，且无法恢复。${NC}"
+    echo -e "${YELLOW}此操作将卸载 sing-box 和 Argo Tunnel、删除所有节点配置、证书、快捷命令 sb/argo 和当前脚本，且无法恢复。${NC}"
     echo -e "${RED}警告：这将永久删除所有数据！${NC}"
     echo ""
     echo -e "${CYAN}注意:${NC}"
     echo -e "  1. 此操作与'删除全部节点'不同"
     echo -e "  2. '删除全部节点'只会清空配置，保留服务和脚本"
-    echo -e "  3. 此操作会完全卸载 sing-box 和脚本"
+    echo -e "  3. 此操作会完全卸载 sing-box、Argo 和脚本"
     echo ""
     
     read -p "确认完全卸载？(y/N): " CONFIRM_DELETE
@@ -3417,10 +3417,49 @@ delete_self() {
         fi
     done
     
+    # 清理 Argo Tunnel
+    print_info "停止 Argo Tunnel 服务..."
+    if [[ -f /etc/alpine-release ]]; then
+        rc-service argo-cloudflared stop >/dev/null 2>&1
+        rc-service argo-core stop >/dev/null 2>&1
+        rc-update del argo-cloudflared default >/dev/null 2>&1
+        rc-update del argo-core default >/dev/null 2>&1
+        if [[ -f /etc/init.d/argo-cloudflared ]]; then
+            print_info "删除 Argo OpenRC 服务..."
+            rm -f /etc/init.d/argo-cloudflared /etc/init.d/argo-core >/dev/null 2>&1
+        fi
+    else
+        systemctl stop argo-cloudflared.service argo-core.service >/dev/null 2>&1
+        systemctl disable argo-cloudflared.service argo-core.service >/dev/null 2>&1
+        if [[ -f /etc/systemd/system/argo-cloudflared.service ]]; then
+            print_info "删除 Argo systemd 服务文件..."
+            rm -f /etc/systemd/system/argo-cloudflared.service /etc/systemd/system/argo-core.service >/dev/null 2>&1
+            systemctl daemon-reload >/dev/null 2>&1
+        fi
+    fi
+    
+    if [[ -d /opt/argo ]]; then
+        print_info "删除 Argo 配置目录..."
+        rm -rf /opt/argo >/dev/null 2>&1
+    fi
+    
+    print_info "删除快捷命令 argo..."
+    for cmd in /usr/local/bin/argo /usr/bin/argo /usr/local/sbin/argo /usr/sbin/argo; do
+        if [[ -f "$cmd" ]]; then
+            print_info "删除快捷命令: $cmd"
+            rm -f "$cmd" 2>/dev/null
+        fi
+    done
+    
+    if [[ -d /root/.cloudflared ]]; then
+        print_info "删除 Cloudflare 配置..."
+        rm -rf /root/.cloudflared >/dev/null 2>&1
+    fi
+    
     print_info "删除当前脚本文件: ${SCRIPT_PATH}"
     rm -f "${SCRIPT_PATH}" 2>/dev/null
     
-    print_success "已完成 sing-box 完整卸载和脚本清理，准备退出。"
+    print_success "已完成 sing-box、Argo Tunnel 完整卸载和脚本清理，准备退出。"
     echo ""
     echo -e "${GREEN}✔ 所有文件已清理完成${NC}"
     echo -e "${YELLOW}注意:${NC}"
