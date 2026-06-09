@@ -28,6 +28,14 @@ ANYTLS_LINKS_FILE="${LINK_DIR}/anytls.txt"
 # 脚本路径
 SCRIPT_PATH=$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")
 
+# ==================== 依赖检查 ====================
+for cmd in jq curl openssl ss tar wget; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+        echo "错误: 缺少必要依赖 '$cmd'，请先安装"
+        exit 1
+    fi
+done
+
 # ==================== 全局变量 ====================
 INBOUNDS_JSON=""
 ALL_LINKS_TEXT=""
@@ -202,7 +210,7 @@ svc_disable() {
 
 svc_is_active() {
     if [[ $ALPINE -eq 1 ]]; then
-        rc-service sing-box status 2>/dev/null | grep -q 'started'
+        rc-service sing-box status 2>/dev/null | grep -q 'status: started'
     else
         systemctl is-active --quiet sing-box
     fi
@@ -308,7 +316,10 @@ install_singbox() {
             ((retry++))
             [[ $retry -lt $max_retries ]] && sleep 2
         done
-        [[ -z "$LATEST" ]] && LATEST="1.12.0"
+        if [[ -z "$LATEST" ]]; then
+            print_error "获取 sing-box 版本失败，请检查网络"
+            return 1
+        fi
         print_info "目标版本: ${LATEST}"
 
         # 清理可能残留的半成品
@@ -424,8 +435,15 @@ gen_cert_for_sni() {
     
     mkdir -p "${node_cert_dir}"
     
-    openssl genrsa -out "${node_cert_dir}/private.key" 2048 2>/dev/null
-    openssl req -new -x509 -days 36500 -key "${node_cert_dir}/private.key" -out "${node_cert_dir}/cert.pem" -subj "/C=US/ST=California/L=Cupertino/O=Apple Inc./CN=${sni}" 2>/dev/null
+    if ! openssl genrsa -out "${node_cert_dir}/private.key" 2048 2>/dev/null; then
+        print_error "生成私钥失败 (${sni})"
+        return 1
+    fi
+    if ! openssl req -new -x509 -days 36500 -key "${node_cert_dir}/private.key" -out "${node_cert_dir}/cert.pem" -subj "/C=US/ST=California/L=Cupertino/O=Apple Inc./CN=${sni}" 2>/dev/null; then
+        print_error "生成证书失败 (${sni})"
+        rm -f "${node_cert_dir}/private.key"
+        return 1
+    fi
     
     print_success "证书生成完成 (${sni}, 有效期100年)"
 }
@@ -453,6 +471,11 @@ gen_keys() {
     KEYS=$(${INSTALL_DIR}/sing-box generate reality-keypair 2>/dev/null)
     REALITY_PRIVATE=$(echo "$KEYS" | grep "PrivateKey" | awk '{print $2}')
     REALITY_PUBLIC=$(echo "$KEYS" | grep "PublicKey" | awk '{print $2}')
+    
+    if [[ -z "$REALITY_PRIVATE" || -z "$REALITY_PUBLIC" ]]; then
+        print_error "生成 Reality 密钥对失败"
+        return 1
+    fi
     
     SHORT_ID=$(openssl rand -hex 8)
     print_info "Reality Short ID 已自动生成: ${SHORT_ID}"
