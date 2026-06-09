@@ -3335,7 +3335,7 @@ modify_reality_node() {
     
     read -p "请选择要修改的节点序号 (0 取消): " node_choice
     [[ "$node_choice" == "0" ]] && return 0
-    local idx=$((10#node_choice-1))
+    local idx=$((10#$node_choice-1))
     if ! [[ "$node_choice" =~ ^[0-9]+$ ]] || (( idx < 0 || idx >= ${#reality_nodes[@]} )); then
         print_error "序号无效"
         return 1
@@ -3423,7 +3423,7 @@ modify_hysteria2_node() {
     
     read -p "请选择要修改的节点序号 (0 取消): " node_choice
     [[ "$node_choice" == "0" ]] && return 0
-    local idx=$((10#node_choice-1))
+    local idx=$((10#$node_choice-1))
     if ! [[ "$node_choice" =~ ^[0-9]+$ ]] || (( idx < 0 || idx >= ${#hy2_nodes[@]} )); then
         print_error "序号无效"
         return 1
@@ -3513,7 +3513,7 @@ modify_socks5_node() {
     
     read -p "请选择要修改的节点序号 (0 取消): " node_choice
     [[ "$node_choice" == "0" ]] && return 0
-    local idx=$((10#node_choice-1))
+    local idx=$((10#$node_choice-1))
     if ! [[ "$node_choice" =~ ^[0-9]+$ ]] || (( idx < 0 || idx >= ${#socks_nodes[@]} )); then
         print_error "序号无效"
         return 1
@@ -3597,7 +3597,7 @@ modify_shadowtls_node() {
     
     read -p "请选择要修改的节点序号 (0 取消): " node_choice
     [[ "$node_choice" == "0" ]] && return 0
-    local idx=$((10#node_choice-1))
+    local idx=$((10#$node_choice-1))
     if ! [[ "$node_choice" =~ ^[0-9]+$ ]] || (( idx < 0 || idx >= ${#stls_nodes[@]} )); then
         print_error "序号无效"
         return 1
@@ -3718,7 +3718,7 @@ modify_https_node() {
     
     read -p "请选择要修改的节点序号 (0 取消): " node_choice
     [[ "$node_choice" == "0" ]] && return 0
-    local idx=$((10#node_choice-1))
+    local idx=$((10#$node_choice-1))
     if ! [[ "$node_choice" =~ ^[0-9]+$ ]] || (( idx < 0 || idx >= ${#https_nodes[@]} )); then
         print_error "序号无效"
         return 1
@@ -3804,7 +3804,7 @@ modify_anytls_node() {
     
     read -p "请选择要修改的节点序号 (0 取消): " node_choice
     [[ "$node_choice" == "0" ]] && return 0
-    local idx=$((10#node_choice-1))
+    local idx=$((10#$node_choice-1))
     if ! [[ "$node_choice" =~ ^[0-9]+$ ]] || (( idx < 0 || idx >= ${#anytls_nodes[@]} )); then
         print_error "序号无效"
         return 1
