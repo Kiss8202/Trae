@@ -29,12 +29,17 @@ ANYTLS_LINKS_FILE="${LINK_DIR}/anytls.txt"
 SCRIPT_PATH=$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")
 
 # ==================== 依赖检查 ====================
-for cmd in jq curl openssl ss tar wget; do
+for cmd in jq curl openssl tar wget; do
     if ! command -v "$cmd" >/dev/null 2>&1; then
         echo "错误: 缺少必要依赖 '$cmd'，请先安装"
         exit 1
     fi
 done
+# ss 或 netstat 至少需要一个
+if ! command -v ss >/dev/null 2>&1 && ! command -v netstat >/dev/null 2>&1; then
+    echo "错误: 缺少必要依赖 'ss' 或 'netstat'，请先安装"
+    exit 1
+fi
 
 # ==================== 全局变量 ====================
 INBOUNDS_JSON=""
@@ -210,7 +215,7 @@ svc_disable() {
 
 svc_is_active() {
     if [[ $ALPINE -eq 1 ]]; then
-        rc-service sing-box status 2>/dev/null | grep -q 'status: started'
+        rc-service sing-box status >/dev/null 2>&1
     else
         systemctl is-active --quiet sing-box
     fi
@@ -2048,8 +2053,10 @@ EOF
     else
         # 纯 AnyTLS 入站（需要证书）
         local insecure_bool="false"
+        local insecure_val="0"
         if [[ "$ALLOW_INSECURE" =~ ^[Yy]$ ]]; then
             insecure_bool="true"
+            insecure_val="1"
         fi
         inbound="{
   \"type\": \"anytls\",
@@ -2061,6 +2068,7 @@ EOF
   \"tls\": {
     \"enabled\": true,
     \"server_name\": \"${ANYTLS_SNI}\",
+    \"insecure\": ${insecure_bool},
     \"certificate_path\": \"${CERT_DIR}/${ANYTLS_SNI}/cert.pem\",
     \"key_path\": \"${CERT_DIR}/${ANYTLS_SNI}/private.key\"
   }
@@ -2068,7 +2076,7 @@ EOF
         PROTO="AnyTLS"
         EXTRA_INFO="密码: ${NODE_ANYTLS_PASSWORD}\n证书: 自签证书 (${ANYTLS_SNI})"
         # 生成 anytls:// 链接，insecure 根据用户选择
-        LINK="anytls://${NODE_ANYTLS_PASSWORD}@${SERVER_IP}:${PORT}?security=tls&fp=${UTLS_FINGERPRINT}&insecure=${insecure_bool}&sni=${ANYTLS_SNI}&type=tcp#AnyTLS-${SERVER_IP}"
+        LINK="anytls://${NODE_ANYTLS_PASSWORD}@${SERVER_IP}:${PORT}?security=tls&fp=${UTLS_FINGERPRINT}&insecure=${insecure_val}&sni=${ANYTLS_SNI}&type=tcp#AnyTLS-${SERVER_IP}"
     fi
 
     # 并入全局 inbound JSON
