@@ -28,18 +28,53 @@ ANYTLS_LINKS_FILE="${LINK_DIR}/anytls.txt"
 # 脚本路径
 SCRIPT_PATH=$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")
 
-# ==================== 依赖检查 ====================
-for cmd in jq curl openssl tar wget; do
-    if ! command -v "$cmd" >/dev/null 2>&1; then
-        echo "错误: 缺少必要依赖 '$cmd'，请先安装"
+# ==================== 依赖检查与自动安装 ====================
+check_and_install_deps() {
+    local missing=()
+    for cmd in jq curl openssl tar wget; do
+        command -v "$cmd" >/dev/null 2>&1 || missing+=("$cmd")
+    done
+    # ss 或 netstat 至少需要一个
+    if ! command -v ss >/dev/null 2>&1 && ! command -v netstat >/dev/null 2>&1; then
+        missing+=("ss")
+    fi
+
+    if [[ ${#missing[@]} -eq 0 ]]; then
+        return 0
+    fi
+
+    echo "检测到缺少依赖: ${missing[*]}"
+    echo "正在自动安装..."
+
+    if [[ $ALPINE -eq 1 ]]; then
+        apk update && apk add --no-cache "${missing[@]}" iproute2 2>/dev/null
+    elif command -v apt >/dev/null 2>&1; then
+        apt update -y && apt install -y "${missing[@]}" iproute2 2>/dev/null
+    elif command -v yum >/dev/null 2>&1; then
+        yum install -y "${missing[@]}" iproute 2>/dev/null
+    elif command -v dnf >/dev/null 2>&1; then
+        dnf install -y "${missing[@]}" iproute 2>/dev/null
+    else
+        echo "错误: 无法确定包管理器，请手动安装依赖: ${missing[*]}"
         exit 1
     fi
-done
-# ss 或 netstat 至少需要一个
-if ! command -v ss >/dev/null 2>&1 && ! command -v netstat >/dev/null 2>&1; then
-    echo "错误: 缺少必要依赖 'ss' 或 'netstat'，请先安装"
-    exit 1
-fi
+
+    # 验证安装结果
+    local still_missing=()
+    for cmd in jq curl openssl tar wget; do
+        command -v "$cmd" >/dev/null 2>&1 || still_missing+=("$cmd")
+    done
+    if ! command -v ss >/dev/null 2>&1 && ! command -v netstat >/dev/null 2>&1; then
+        still_missing+=("ss/netstat")
+    fi
+
+    if [[ ${#still_missing[@]} -gt 0 ]]; then
+        echo "错误: 以下依赖安装失败: ${still_missing[*]}，请手动安装"
+        exit 1
+    fi
+
+    echo "依赖安装完成"
+}
 
 # ==================== 全局变量 ====================
 INBOUNDS_JSON=""
@@ -5412,6 +5447,7 @@ main() {
     fi
     
     detect_system
+    check_and_install_deps
     install_singbox
     mkdir -p /etc/sing-box
     gen_keys
