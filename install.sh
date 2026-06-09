@@ -4824,6 +4824,11 @@ delete_self() {
         rm -f "${KEY_FILE}" 2>/dev/null
     fi
     
+    if [[ -f /etc/logrotate.d/sing-box ]]; then
+        print_info "删除 logrotate 配置..."
+        rm -f /etc/logrotate.d/sing-box
+    fi
+
     if [[ -d /var/log/sing-box ]]; then
         print_info "删除 sing-box 日志目录..."
         rm -rf /var/log/sing-box 2>/dev/null
@@ -4849,6 +4854,10 @@ delete_self() {
     
     print_info "删除当前脚本文件: ${SCRIPT_PATH}"
     rm -f "${SCRIPT_PATH}" 2>/dev/null
+    # 确保快捷命令指向的脚本副本也被删除（即使 /etc/sing-box 已被删除）
+    if [[ "${SCRIPT_PATH}" != "/etc/sing-box/install.sh" ]] && [[ -f /etc/sing-box/install.sh ]]; then
+        rm -f /etc/sing-box/install.sh 2>/dev/null
+    fi
     
     print_success "已完成 sing-box 完整卸载和脚本清理，准备退出。"
     echo ""
