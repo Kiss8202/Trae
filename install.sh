@@ -4704,25 +4704,25 @@ config_and_view_menu() {
                 local _has_any=0
                 if [[ -n "$REALITY_LINKS" ]]; then
                     _has_any=1
-                    echo -e "${GREEN}━━━ Reality 节点 ━━━${NC}"
+                    echo -e "${CYAN}━━━ Reality 节点 ━━━${NC}"
                     echo ""
                     echo -e "$REALITY_LINKS"
                 fi
                 if [[ -n "$HYSTERIA2_LINKS" ]]; then
                     _has_any=1
-                    echo -e "${GREEN}━━━ Hysteria2 节点 ━━━${NC}"
+                    echo -e "${PURPLE}━━━ Hysteria2 节点 ━━━${NC}"
                     echo ""
                     echo -e "$HYSTERIA2_LINKS"
                 fi
                 if [[ -n "$SOCKS5_LINKS" ]]; then
                     _has_any=1
-                    echo -e "${GREEN}━━━ SOCKS5 节点 ━━━${NC}"
+                    echo -e "${YELLOW}━━━ SOCKS5 节点 ━━━${NC}"
                     echo ""
                     echo -e "$SOCKS5_LINKS"
                 fi
                 if [[ -n "$SHADOWTLS_LINKS" ]]; then
                     _has_any=1
-                    echo -e "${GREEN}━━━ ShadowTLS 节点 ━━━${NC}"
+                    echo -e "${BLUE}━━━ ShadowTLS 节点 ━━━${NC}"
                     echo ""
                     echo -e "$SHADOWTLS_LINKS"
                     echo -e "${CYAN}提示: 可直接复制上方 ss:// 链接导入客户端 (Shadowrocket/NekoBox/v2rayN)${NC}"
@@ -4736,7 +4736,7 @@ config_and_view_menu() {
                 fi
                 if [[ -n "$ANYTLS_LINKS" ]]; then
                     _has_any=1
-                    echo -e "${GREEN}━━━ AnyTLS 节点 ━━━${NC}"
+                    echo -e "${RED}━━━ AnyTLS 节点 ━━━${NC}"
                     echo ""
                     echo -e "$ANYTLS_LINKS"
                 fi
@@ -4748,7 +4748,7 @@ config_and_view_menu() {
                 ;;
             3)
                 clear
-                echo -e "${YELLOW}Reality 节点:${NC}"
+                echo -e "${CYAN}Reality 节点:${NC}"
                 echo ""
                 if [[ -z "$REALITY_LINKS" ]]; then
                     echo "(暂无 Reality 节点)"
@@ -4760,7 +4760,7 @@ config_and_view_menu() {
                 ;;
             4)
                 clear
-                echo -e "${YELLOW}Hysteria2 节点:${NC}"
+                echo -e "${PURPLE}Hysteria2 节点:${NC}"
                 echo ""
                 if [[ -z "$HYSTERIA2_LINKS" ]]; then
                     echo "(暂无 Hysteria2 节点)"
@@ -4784,7 +4784,7 @@ config_and_view_menu() {
                 ;;
             6)
                 clear
-                echo -e "${YELLOW}ShadowTLS 节点:${NC}"
+                echo -e "${BLUE}ShadowTLS 节点:${NC}"
                 echo ""
                 if [[ -z "$SHADOWTLS_LINKS" ]]; then
                     echo "(暂无 ShadowTLS 节点)"
@@ -4798,7 +4798,7 @@ config_and_view_menu() {
                 ;;
             7)
                 clear
-                echo -e "${YELLOW}HTTPS 节点:${NC}"
+                echo -e "${GREEN}HTTPS 节点:${NC}"
                 echo ""
                 if [[ -z "$HTTPS_LINKS" ]]; then
                     echo "(暂无 HTTPS 节点)"
@@ -4810,7 +4810,7 @@ config_and_view_menu() {
                 ;;
             8)
                 clear
-                echo -e "${YELLOW}AnyTLS 节点:${NC}"
+                echo -e "${RED}AnyTLS 节点:${NC}"
                 echo ""
                 if [[ -z "$ANYTLS_LINKS" ]]; then
                     echo "(暂无 AnyTLS 节点)"
