@@ -4697,12 +4697,51 @@ config_and_view_menu() {
                 ;;
             2)
                 clear
-                echo -e "${YELLOW}全部节点链接:${NC}"
+                echo -e "${CYAN}╔═══════════════════════════════════════════════════════╗${NC}"
+                echo -e "${CYAN}║              ${GREEN}全部节点链接${CYAN}                        ║${NC}"
+                echo -e "${CYAN}╚═══════════════════════════════════════════════════════╝${NC}"
                 echo ""
-                if [[ -z "$ALL_LINKS_TEXT" ]]; then
-                    echo "(暂无节点)"
-                else
-                    echo -e "$ALL_LINKS_TEXT"
+                local _has_any=0
+                if [[ -n "$REALITY_LINKS" ]]; then
+                    _has_any=1
+                    echo -e "${GREEN}━━━ Reality 节点 ━━━${NC}"
+                    echo ""
+                    echo -e "$REALITY_LINKS"
+                fi
+                if [[ -n "$HYSTERIA2_LINKS" ]]; then
+                    _has_any=1
+                    echo -e "${GREEN}━━━ Hysteria2 节点 ━━━${NC}"
+                    echo ""
+                    echo -e "$HYSTERIA2_LINKS"
+                fi
+                if [[ -n "$SOCKS5_LINKS" ]]; then
+                    _has_any=1
+                    echo -e "${GREEN}━━━ SOCKS5 节点 ━━━${NC}"
+                    echo ""
+                    echo -e "$SOCKS5_LINKS"
+                fi
+                if [[ -n "$SHADOWTLS_LINKS" ]]; then
+                    _has_any=1
+                    echo -e "${GREEN}━━━ ShadowTLS 节点 ━━━${NC}"
+                    echo ""
+                    echo -e "$SHADOWTLS_LINKS"
+                    echo -e "${CYAN}提示: 可直接复制上方 ss:// 链接导入客户端 (Shadowrocket/NekoBox/v2rayN)${NC}"
+                    echo ""
+                fi
+                if [[ -n "$HTTPS_LINKS" ]]; then
+                    _has_any=1
+                    echo -e "${GREEN}━━━ HTTPS 节点 ━━━${NC}"
+                    echo ""
+                    echo -e "$HTTPS_LINKS"
+                fi
+                if [[ -n "$ANYTLS_LINKS" ]]; then
+                    _has_any=1
+                    echo -e "${GREEN}━━━ AnyTLS 节点 ━━━${NC}"
+                    echo ""
+                    echo -e "$ANYTLS_LINKS"
+                fi
+                if [[ $_has_any -eq 0 ]]; then
+                    echo -e "${YELLOW}(暂无节点)${NC}"
                 fi
                 echo ""
                 read -p "按回车返回..." _
