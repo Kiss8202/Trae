@@ -186,7 +186,7 @@ modify_port() {
         new_port=$(get_random_free_port)
         [[ -z "$new_port" ]] && { print_error "无法获取随机端口"; return 1; }
     fi
-    if ! [[ "$new_port" =~ ^[0-9]+$ ]] || (( 10#new_port < 1 || 10#new_port > 65535 )); then
+    if ! [[ "$new_port" =~ ^[0-9]+$ ]] || (( 10#$new_port < 1 || 10#$new_port > 65535 )); then
         print_error "端口无效"; return 1
     fi
     if check_port_in_use "$new_port" && [[ "$new_port" != "$current_port" ]]; then
