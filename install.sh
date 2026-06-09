@@ -28,6 +28,14 @@ ANYTLS_LINKS_FILE="${LINK_DIR}/anytls.txt"
 # 脚本路径
 SCRIPT_PATH=$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")
 
+# 自动检测脚本远程仓库地址（从 $0 提取，支持 curl|bash 方式运行）
+REPO_RAW_URL=""
+if [[ "$0" =~ ^https?:// ]]; then
+    REPO_RAW_URL="$0"
+elif [[ "${BASH_SOURCE[0]:-$0}" =~ ^https?:// ]]; then
+    REPO_RAW_URL="${BASH_SOURCE[0]}"
+fi
+
 # ==================== 依赖检查与自动安装 ====================
 check_and_install_deps() {
     local missing=()
@@ -5433,11 +5441,14 @@ main() {
         if [[ -f "${script_src}" ]]; then
             cp "${script_src}" "${sb_script}" 2>/dev/null
         fi
-        # 如果 BASH_SOURCE 也不可用，从 GitHub 重新下载
+        # 如果 BASH_SOURCE 也不可用，从远程仓库重新下载
         if [[ ! -f "${sb_script}" ]]; then
-            print_info "脚本不在磁盘上，从 GitHub 下载到 ${sb_script} ..."
-            local repo_raw="https://raw.githubusercontent.com/Kiss8202/argo/main/install.sh"
-            wget -q -O "${sb_script}" "${repo_raw}" 2>/dev/null || curl -sL -o "${sb_script}" "${repo_raw}" 2>/dev/null || true
+            if [[ -n "${REPO_RAW_URL}" ]]; then
+                print_info "脚本不在磁盘上，从 ${REPO_RAW_URL} 下载到 ${sb_script} ..."
+                wget -q -O "${sb_script}" "${REPO_RAW_URL}" 2>/dev/null || curl -sL -o "${sb_script}" "${REPO_RAW_URL}" 2>/dev/null || true
+            else
+                print_warning "无法确定脚本远程地址，跳过下载"
+            fi
         fi
         if [[ -f "${sb_script}" ]]; then
             chmod +x "${sb_script}"
