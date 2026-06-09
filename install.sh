@@ -90,6 +90,22 @@ cleanup_temp_files() {
 }
 trap cleanup_temp_files EXIT INT TERM
 
+# ==================== jq 配置文件原子更新 ====================
+# 用法: jq_update_config <jq参数...>
+# 功能: 原子性更新配置文件，先写临时文件再替换，失败时保留原文件
+jq_update_config() {
+    local tmp_file
+    tmp_file=$(mktemp) || { print_error "创建临时文件失败"; return 1; }
+    if jq "$@" "${CONFIG_FILE}" > "$tmp_file"; then
+        mv "$tmp_file" "${CONFIG_FILE}"
+        return 0
+    else
+        rm -f "$tmp_file"
+        print_error "配置修改失败"
+        return 1
+    fi
+}
+
 # ==================== 打印函数 ====================
 print_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
@@ -309,7 +325,7 @@ install_singbox() {
 
         # 小内存机器解压时很可能被杀，解压前确保文件完整
         print_info "解压 sing-box ..."
-        if tar -xzf /tmp/sb.tar.gz -C /tmp 4>/dev/null; then
+        if tar -xzf /tmp/sb.tar.gz -C /tmp 2>/dev/null; then
             rm -f /tmp/sb.tar.gz
         else
             print_error "解压失败（可能内存不足被 kill），请增加 swap 后重新运行脚本"
@@ -557,6 +573,9 @@ load_inbounds_from_config() {
             sni=$(echo "$inbound" | jq -r '.tls.server_name // ""' 2>/dev/null)
         elif [[ "$tag" == *"anytls-in-"* ]]; then
             proto="AnyTLS"
+            sni=$(echo "$inbound" | jq -r '.tls.server_name // ""' 2>/dev/null)
+        elif [[ "$tag" == *"anytls-reality-"* ]]; then
+            proto="AnyTLS+REALITY"
             sni=$(echo "$inbound" | jq -r '.tls.server_name // ""' 2>/dev/null)
         fi
         
@@ -926,18 +945,26 @@ EOFCLIENT
             "anytls")
                 local password=$(echo "$inbound" | jq -r '.users[0].password // ""' 2>/dev/null)
                 local sni=$(echo "$inbound" | jq -r '.tls.server_name // ""' 2>/dev/null)
+                local reality_enabled=$(echo "$inbound" | jq -r '.tls.reality.enabled // false' 2>/dev/null)
                 
                 [[ -z "$sni" ]] && sni="${DEFAULT_SNI}"
                 
                 if [[ -n "$password" ]]; then
-                    # IPv4 链接
-                    local link_ipv4="anytls://${password}@${SERVER_IP}:${port}?security=tls&fp=chrome&insecure=1&sni=${sni}&type=tcp#AnyTLS-${SERVER_IP}"
-                    add_link "$link_ipv4" "AnyTLS" "" "${SERVER_IP}" "${port}" "${sni}"
-                    
-                    # IPv6 链接（如果有）
-                    if [[ -n "${SERVER_IPV6}" ]]; then
-                        local link_ipv6="anytls://${password}@[${SERVER_IPV6}]:${port}?security=tls&fp=chrome&insecure=1&sni=${sni}&type=tcp#AnyTLS-[${SERVER_IPV6}]"
-                        add_link "$link_ipv6" "AnyTLS" "" "[${SERVER_IPV6}]" "${port}" "${sni}"
+                    if [[ "$reality_enabled" == "true" ]]; then
+                        # AnyTLS+REALITY 不生成标准链接，提示使用客户端配置
+                        local link_text="[AnyTLS+REALITY] ${SERVER_IP}:${port} (SNI: ${sni})\n请使用 sing-box 客户端配置文件\n----------------------------------------\n\n"
+                        ALL_LINKS_TEXT="${ALL_LINKS_TEXT}${link_text}"
+                        ANYTLS_LINKS="${ANYTLS_LINKS}${link_text}"
+                    else
+                        # IPv4 链接
+                        local link_ipv4="anytls://${password}@${SERVER_IP}:${port}?security=tls&fp=chrome&insecure=1&sni=${sni}&type=tcp#AnyTLS-${SERVER_IP}"
+                        add_link "$link_ipv4" "AnyTLS" "" "${SERVER_IP}" "${port}" "${sni}"
+                        
+                        # IPv6 链接（如果有）
+                        if [[ -n "${SERVER_IPV6}" ]]; then
+                            local link_ipv6="anytls://${password}@[${SERVER_IPV6}]:${port}?security=tls&fp=chrome&insecure=1&sni=${sni}&type=tcp#AnyTLS-[${SERVER_IPV6}]"
+                            add_link "$link_ipv6" "AnyTLS" "" "[${SERVER_IPV6}]" "${port}" "${sni}"
+                        fi
                     fi
                 fi
                 ;;
@@ -1232,7 +1259,12 @@ get_random_free_port() {
 
 # 从 DEFAULT_SNI1 随机选择 SNI
 get_random_sni() {
+    local -a _sni_array
     IFS=',' read -ra _sni_array <<< "${DEFAULT_SNI1}"
+    if [[ ${#_sni_array[@]} -eq 0 ]]; then
+        echo "${DEFAULT_SNI}"
+        return
+    fi
     echo "${_sni_array[$((RANDOM % ${#_sni_array[@]}))]}"
 }
 
@@ -1270,6 +1302,10 @@ setup_reality() {
     
     # 每个节点使用独立UUID
     local NODE_UUID=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null)
+    if [[ -z "$NODE_UUID" ]]; then
+        print_error "UUID 生成失败，请检查系统环境"
+        return 1
+    fi
     print_info "节点 UUID: ${NODE_UUID}"
     
     print_info "生成配置文件..."
@@ -1783,6 +1819,10 @@ setup_https() {
     
     # 每个节点使用独立UUID
     local NODE_UUID=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null)
+    if [[ -z "$NODE_UUID" ]]; then
+        print_error "UUID 生成失败，请检查系统环境"
+        return 1
+    fi
     print_info "节点 UUID: ${NODE_UUID}"
     
     print_info "生成配置文件..."
@@ -2012,7 +2052,11 @@ EOF
     fi
 
     # 记录节点信息
-    INBOUND_TAGS+=("anytls-${PORT}")
+    if [[ "$ENABLE_REALITY" =~ ^[Yy]$ ]]; then
+        INBOUND_TAGS+=("anytls-reality-${PORT}")
+    else
+        INBOUND_TAGS+=("anytls-in-${PORT}")
+    fi
     INBOUND_PORTS+=("${PORT}")
     INBOUND_PROTOS+=("${PROTO}")
     INBOUND_SNIS+=("${ANYTLS_SNI}")
@@ -2689,7 +2733,7 @@ setup_relay() {
                     elif [[ "$RELAY_LINK" =~ ^(hy2|hysteria2):// ]]; then
                         parse_hysteria2_link "$RELAY_LINK" "$custom_desc"
                     elif [[ "$RELAY_LINK" =~ ^anytls:// ]]; then
-                        parse_anytls_link "$RELAY_LINK"
+                        parse_anytls_link "$RELAY_LINK" "$custom_desc"
                     else
                         print_error "不支持的链接格式"
                     fi
@@ -2934,7 +2978,7 @@ setup_relay() {
                 elif [[ "$NEW_RELAY_LINK" =~ ^(hy2|hysteria2):// ]]; then
                     parse_hysteria2_link "$NEW_RELAY_LINK" "$new_custom_desc" && parse_ok=1
                 elif [[ "$NEW_RELAY_LINK" =~ ^anytls:// ]]; then
-                    parse_anytls_link "$NEW_RELAY_LINK" && parse_ok=1
+                    parse_anytls_link "$NEW_RELAY_LINK" "$new_custom_desc" && parse_ok=1
                 else
                     print_error "不支持的链接格式"
                 fi
@@ -3184,7 +3228,7 @@ modify_reality_node() {
     
     read -p "请选择要修改的节点序号 (0 取消): " node_choice
     [[ "$node_choice" == "0" ]] && return 0
-    local idx=$((node_choice-1))
+    local idx=$((10#node_choice-1))
     if ! [[ "$node_choice" =~ ^[0-9]+$ ]] || (( idx < 0 || idx >= ${#reality_nodes[@]} )); then
         print_error "序号无效"
         return 1
@@ -3194,7 +3238,7 @@ modify_reality_node() {
     local tag="${INBOUND_TAGS[$array_idx]}"
     local port="${INBOUND_PORTS[$array_idx]}"
     
-    config_changed=0
+    local config_changed=0
     
     while true; do
         echo ""
@@ -3221,13 +3265,11 @@ modify_reality_node() {
                     print_warning "端口 ${new_port} 已被占用"; continue
                 fi
                 local new_tag="vless-in-${new_port}"
-                jq --arg old_tag "$tag" --arg new_tag "$new_tag" --argjson new_port "$new_port" \
-                    '(.inbounds[] | select(.tag == $old_tag)) |= (.tag = $new_tag | .listen_port = $new_port)' \
-                    "${CONFIG_FILE}" > /tmp/config_tmp.json && mv /tmp/config_tmp.json "${CONFIG_FILE}"
+                jq_update_config --arg old_tag "$tag" --arg new_tag "$new_tag" --argjson new_port "$new_port" \
+                    '(.inbounds[] | select(.tag == $old_tag)) |= (.tag = $new_tag | .listen_port = $new_port)'
                 if jq -e '.route.rules' "${CONFIG_FILE}" >/dev/null 2>&1; then
-                    jq --arg old_tag "$tag" --arg new_tag "$new_tag" \
-                        '(.route.rules[] | select(.inbound[]? == $old_tag)) |= (.inbound = [.inbound[] | if . == $old_tag then $new_tag else . end])' \
-                        "${CONFIG_FILE}" > /tmp/config_tmp.json && mv /tmp/config_tmp.json "${CONFIG_FILE}"
+                    jq_update_config --arg old_tag "$tag" --arg new_tag "$new_tag" \
+                        '(.route.rules[] | select(.inbound[]? == $old_tag)) |= (.inbound = [.inbound[] | if . == $old_tag then $new_tag else . end])'
                 fi
                 INBOUND_TAGS[$array_idx]="$new_tag"
                 INBOUND_PORTS[$array_idx]="$new_port"
@@ -3243,26 +3285,26 @@ modify_reality_node() {
                 if [[ -z "$new_sni" ]]; then
                     new_sni=$(get_random_sni)
                 fi
-                jq --arg tag "$tag" --arg sni "$new_sni" \
-                    '(.inbounds[] | select(.tag == $tag)) |= (.tls.server_name = $sni | .tls.reality.handshake.server = $sni)' \
-                    "${CONFIG_FILE}" > /tmp/config_tmp.json && mv /tmp/config_tmp.json "${CONFIG_FILE}"
+                jq_update_config --arg tag "$tag" --arg sni "$new_sni" \
+                    '(.inbounds[] | select(.tag == $tag)) |= (.tls.server_name = $sni | .tls.reality.handshake.server = $sni)'
                 INBOUND_SNIS[$array_idx]="$new_sni"
                 config_changed=1
                 print_success "SNI 已修改为 ${new_sni}"
                 ;;
             3)
                 local new_uuid=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null)
-                jq --arg tag "$tag" --arg uuid "$new_uuid" \
-                    '(.inbounds[] | select(.tag == $tag)) |= (.users[0].uuid = $uuid)' \
-                    "${CONFIG_FILE}" > /tmp/config_tmp.json && mv /tmp/config_tmp.json "${CONFIG_FILE}"
+                if [[ -z "$new_uuid" ]]; then
+                    print_error "UUID 生成失败"; continue
+                fi
+                jq_update_config --arg tag "$tag" --arg uuid "$new_uuid" \
+                    '(.inbounds[] | select(.tag == $tag)) |= (.users[0].uuid = $uuid)'
                 config_changed=1
                 print_success "UUID 已重新生成: ${new_uuid}"
                 ;;
             4)
                 local new_sid=$(openssl rand -hex 8)
-                jq --arg tag "$tag" --arg sid "$new_sid" \
-                    '(.inbounds[] | select(.tag == $tag)) |= (.tls.reality.short_id = [$sid])' \
-                    "${CONFIG_FILE}" > /tmp/config_tmp.json && mv /tmp/config_tmp.json "${CONFIG_FILE}"
+                jq_update_config --arg tag "$tag" --arg sid "$new_sid" \
+                    '(.inbounds[] | select(.tag == $tag)) |= (.tls.reality.short_id = [$sid])'
                 config_changed=1
                 print_success "Short ID 已重新生成: ${new_sid}"
                 ;;
@@ -3306,7 +3348,7 @@ modify_hysteria2_node() {
     
     read -p "请选择要修改的节点序号 (0 取消): " node_choice
     [[ "$node_choice" == "0" ]] && return 0
-    local idx=$((node_choice-1))
+    local idx=$((10#node_choice-1))
     if ! [[ "$node_choice" =~ ^[0-9]+$ ]] || (( idx < 0 || idx >= ${#hy2_nodes[@]} )); then
         print_error "序号无效"
         return 1
@@ -3317,7 +3359,7 @@ modify_hysteria2_node() {
     local port="${INBOUND_PORTS[$array_idx]}"
     local current_sni="${INBOUND_SNIS[$array_idx]}"
     
-    config_changed=0
+    local config_changed=0
     
     while true; do
         echo ""
@@ -3344,13 +3386,11 @@ modify_hysteria2_node() {
                     print_warning "端口 ${new_port} 已被占用"; continue
                 fi
                 local new_tag="hy2-in-${new_port}"
-                jq --arg old_tag "$tag" --arg new_tag "$new_tag" --argjson new_port "$new_port" \
-                    '(.inbounds[] | select(.tag == $old_tag)) |= (.tag = $new_tag | .listen_port = $new_port)' \
-                    "${CONFIG_FILE}" > /tmp/config_tmp.json && mv /tmp/config_tmp.json "${CONFIG_FILE}"
+                jq_update_config --arg old_tag "$tag" --arg new_tag "$new_tag" --argjson new_port "$new_port" \
+                    '(.inbounds[] | select(.tag == $old_tag)) |= (.tag = $new_tag | .listen_port = $new_port)'
                 if jq -e '.route.rules' "${CONFIG_FILE}" >/dev/null 2>&1; then
-                    jq --arg old_tag "$tag" --arg new_tag "$new_tag" \
-                        '(.route.rules[] | select(.inbound[]? == $old_tag)) |= (.inbound = [.inbound[] | if . == $old_tag then $new_tag else . end])' \
-                        "${CONFIG_FILE}" > /tmp/config_tmp.json && mv /tmp/config_tmp.json "${CONFIG_FILE}"
+                    jq_update_config --arg old_tag "$tag" --arg new_tag "$new_tag" \
+                        '(.route.rules[] | select(.inbound[]? == $old_tag)) |= (.inbound = [.inbound[] | if . == $old_tag then $new_tag else . end])'
                 fi
                 INBOUND_TAGS[$array_idx]="$new_tag"
                 INBOUND_PORTS[$array_idx]="$new_port"
@@ -3366,9 +3406,8 @@ modify_hysteria2_node() {
                 if [[ -z "$new_sni" ]]; then
                     new_sni=$(get_random_sni)
                 fi
-                jq --arg tag "$tag" --arg sni "$new_sni" \
-                    '(.inbounds[] | select(.tag == $tag)) |= (.tls.server_name = $sni | .tls.certificate_path = ($sni | "/etc/sing-box/certs/\(.)" + "/cert.pem") | .tls.key_path = ($sni | "/etc/sing-box/certs/\(.)" + "/private.key"))' \
-                    "${CONFIG_FILE}" > /tmp/config_tmp.json && mv /tmp/config_tmp.json "${CONFIG_FILE}"
+                jq_update_config --arg tag "$tag" --arg sni "$new_sni" \
+                    '(.inbounds[] | select(.tag == $tag)) |= (.tls.server_name = $sni | .tls.certificate_path = ($sni | "/etc/sing-box/certs/\(.)" + "/cert.pem") | .tls.key_path = ($sni | "/etc/sing-box/certs/\(.)" + "/private.key"))'
                 gen_cert_for_sni "${new_sni}"
                 INBOUND_SNIS[$array_idx]="$new_sni"
                 current_sni="$new_sni"
@@ -3377,17 +3416,15 @@ modify_hysteria2_node() {
                 ;;
             3)
                 local new_password=$(openssl rand -hex 16)
-                jq --arg tag "$tag" --arg password "$new_password" \
-                    '(.inbounds[] | select(.tag == $tag)) |= (.users[0].password = $password)' \
-                    "${CONFIG_FILE}" > /tmp/config_tmp.json && mv /tmp/config_tmp.json "${CONFIG_FILE}"
+                jq_update_config --arg tag "$tag" --arg password "$new_password" \
+                    '(.inbounds[] | select(.tag == $tag)) |= (.users[0].password = $password)'
                 config_changed=1
                 print_success "密码已重新生成: ${new_password}"
                 ;;
             4)
                 local new_obfs_password=$(openssl rand -hex 16)
-                jq --arg tag "$tag" --arg password "$new_obfs_password" \
-                    '(.inbounds[] | select(.tag == $tag)) |= (.obfs.password = $password)' \
-                    "${CONFIG_FILE}" > /tmp/config_tmp.json && mv /tmp/config_tmp.json "${CONFIG_FILE}"
+                jq_update_config --arg tag "$tag" --arg password "$new_obfs_password" \
+                    '(.inbounds[] | select(.tag == $tag)) |= (.obfs.password = $password)'
                 config_changed=1
                 print_success "混淆密码已重新生成: ${new_obfs_password}"
                 ;;
@@ -3431,7 +3468,7 @@ modify_socks5_node() {
     
     read -p "请选择要修改的节点序号 (0 取消): " node_choice
     [[ "$node_choice" == "0" ]] && return 0
-    local idx=$((node_choice-1))
+    local idx=$((10#node_choice-1))
     if ! [[ "$node_choice" =~ ^[0-9]+$ ]] || (( idx < 0 || idx >= ${#socks_nodes[@]} )); then
         print_error "序号无效"
         return 1
@@ -3444,7 +3481,7 @@ modify_socks5_node() {
     # 读取当前用户名
     local current_user=$(jq -r --arg tag "$tag" '(.inbounds[] | select(.tag == $tag)).users[0].username // ""' "${CONFIG_FILE}")
     
-    config_changed=0
+    local config_changed=0
     
     while true; do
         echo ""
@@ -3470,13 +3507,11 @@ modify_socks5_node() {
                     print_warning "端口 ${new_port} 已被占用"; continue
                 fi
                 local new_tag="socks-in-${new_port}"
-                jq --arg old_tag "$tag" --arg new_tag "$new_tag" --argjson new_port "$new_port" \
-                    '(.inbounds[] | select(.tag == $old_tag)) |= (.tag = $new_tag | .listen_port = $new_port)' \
-                    "${CONFIG_FILE}" > /tmp/config_tmp.json && mv /tmp/config_tmp.json "${CONFIG_FILE}"
+                jq_update_config --arg old_tag "$tag" --arg new_tag "$new_tag" --argjson new_port "$new_port" \
+                    '(.inbounds[] | select(.tag == $old_tag)) |= (.tag = $new_tag | .listen_port = $new_port)'
                 if jq -e '.route.rules' "${CONFIG_FILE}" >/dev/null 2>&1; then
-                    jq --arg old_tag "$tag" --arg new_tag "$new_tag" \
-                        '(.route.rules[] | select(.inbound[]? == $old_tag)) |= (.inbound = [.inbound[] | if . == $old_tag then $new_tag else . end])' \
-                        "${CONFIG_FILE}" > /tmp/config_tmp.json && mv /tmp/config_tmp.json "${CONFIG_FILE}"
+                    jq_update_config --arg old_tag "$tag" --arg new_tag "$new_tag" \
+                        '(.route.rules[] | select(.inbound[]? == $old_tag)) |= (.inbound = [.inbound[] | if . == $old_tag then $new_tag else . end])'
                 fi
                 INBOUND_TAGS[$array_idx]="$new_tag"
                 INBOUND_PORTS[$array_idx]="$new_port"
@@ -3491,18 +3526,16 @@ modify_socks5_node() {
                 if [[ -z "$new_user" ]]; then
                     new_user="user_$(openssl rand -hex 4)"
                 fi
-                jq --arg tag "$tag" --arg user "$new_user" \
-                    '(.inbounds[] | select(.tag == $tag)) |= (.users[0].username = $user)' \
-                    "${CONFIG_FILE}" > /tmp/config_tmp.json && mv /tmp/config_tmp.json "${CONFIG_FILE}"
+                jq_update_config --arg tag "$tag" --arg user "$new_user" \
+                    '(.inbounds[] | select(.tag == $tag)) |= (.users[0].username = $user)'
                 current_user="$new_user"
                 config_changed=1
                 print_success "用户名已修改为 ${new_user}"
                 ;;
             3)
                 local new_password=$(openssl rand -hex 16)
-                jq --arg tag "$tag" --arg password "$new_password" \
-                    '(.inbounds[] | select(.tag == $tag)) |= (.users[0].password = $password)' \
-                    "${CONFIG_FILE}" > /tmp/config_tmp.json && mv /tmp/config_tmp.json "${CONFIG_FILE}"
+                jq_update_config --arg tag "$tag" --arg password "$new_password" \
+                    '(.inbounds[] | select(.tag == $tag)) |= (.users[0].password = $password)'
                 config_changed=1
                 print_success "密码已重新生成: ${new_password}"
                 ;;
@@ -3546,7 +3579,7 @@ modify_shadowtls_node() {
     
     read -p "请选择要修改的节点序号 (0 取消): " node_choice
     [[ "$node_choice" == "0" ]] && return 0
-    local idx=$((node_choice-1))
+    local idx=$((10#node_choice-1))
     if ! [[ "$node_choice" =~ ^[0-9]+$ ]] || (( idx < 0 || idx >= ${#stls_nodes[@]} )); then
         print_error "序号无效"
         return 1
@@ -3557,7 +3590,7 @@ modify_shadowtls_node() {
     local port="${INBOUND_PORTS[$array_idx]}"
     local current_sni="${INBOUND_SNIS[$array_idx]}"
     
-    config_changed=0
+    local config_changed=0
     
     while true; do
         echo ""
@@ -3587,18 +3620,15 @@ modify_shadowtls_node() {
                 local new_ss_tag="shadowsocks-in-${new_port}"
                 local old_ss_tag="shadowsocks-in-${port}"
                 # Update shadowtls inbound tag, port, and detour
-                jq --arg old_tag "$tag" --arg new_tag "$new_stls_tag" --argjson new_port "$new_port" --arg new_ss_tag "$new_ss_tag" \
-                    '(.inbounds[] | select(.tag == $old_tag)) |= (.tag = $new_tag | .listen_port = $new_port | .detour = $new_ss_tag)' \
-                    "${CONFIG_FILE}" > /tmp/config_tmp.json && mv /tmp/config_tmp.json "${CONFIG_FILE}"
+                jq_update_config --arg old_tag "$tag" --arg new_tag "$new_stls_tag" --argjson new_port "$new_port" --arg new_ss_tag "$new_ss_tag" \
+                    '(.inbounds[] | select(.tag == $old_tag)) |= (.tag = $new_tag | .listen_port = $new_port | .detour = $new_ss_tag)'
                 # Update shadowsocks inbound tag and detour reference
-                jq --arg old_ss_tag "$old_ss_tag" --arg new_ss_tag "$new_ss_tag" \
-                    '(.inbounds[] | select(.tag == $old_ss_tag)) |= (.tag = $new_ss_tag)' \
-                    "${CONFIG_FILE}" > /tmp/config_tmp.json && mv /tmp/config_tmp.json "${CONFIG_FILE}"
+                jq_update_config --arg old_ss_tag "$old_ss_tag" --arg new_ss_tag "$new_ss_tag" \
+                    '(.inbounds[] | select(.tag == $old_ss_tag)) |= (.tag = $new_ss_tag)'
                 # Update route rules
                 if jq -e '.route.rules' "${CONFIG_FILE}" >/dev/null 2>&1; then
-                    jq --arg old_tag "$tag" --arg new_tag "$new_stls_tag" \
-                        '(.route.rules[] | select(.inbound[]? == $old_tag)) |= (.inbound = [.inbound[] | if . == $old_tag then $new_tag else . end])' \
-                        "${CONFIG_FILE}" > /tmp/config_tmp.json && mv /tmp/config_tmp.json "${CONFIG_FILE}"
+                    jq_update_config --arg old_tag "$tag" --arg new_tag "$new_stls_tag" \
+                        '(.route.rules[] | select(.inbound[]? == $old_tag)) |= (.inbound = [.inbound[] | if . == $old_tag then $new_tag else . end])'
                 fi
                 INBOUND_TAGS[$array_idx]="$new_stls_tag"
                 INBOUND_PORTS[$array_idx]="$new_port"
@@ -3614,9 +3644,8 @@ modify_shadowtls_node() {
                 if [[ -z "$new_sni" ]]; then
                     new_sni=$(get_random_sni)
                 fi
-                jq --arg tag "$tag" --arg sni "$new_sni" \
-                    '(.inbounds[] | select(.tag == $tag)) |= (.handshake.server = $sni)' \
-                    "${CONFIG_FILE}" > /tmp/config_tmp.json && mv /tmp/config_tmp.json "${CONFIG_FILE}"
+                jq_update_config --arg tag "$tag" --arg sni "$new_sni" \
+                    '(.inbounds[] | select(.tag == $tag)) |= (.handshake.server = $sni)'
                 INBOUND_SNIS[$array_idx]="$new_sni"
                 current_sni="$new_sni"
                 config_changed=1
@@ -3624,18 +3653,16 @@ modify_shadowtls_node() {
                 ;;
             3)
                 local new_password=$(openssl rand -hex 16)
-                jq --arg tag "$tag" --arg password "$new_password" \
-                    '(.inbounds[] | select(.tag == $tag)) |= (.users[0].password = $password)' \
-                    "${CONFIG_FILE}" > /tmp/config_tmp.json && mv /tmp/config_tmp.json "${CONFIG_FILE}"
+                jq_update_config --arg tag "$tag" --arg password "$new_password" \
+                    '(.inbounds[] | select(.tag == $tag)) |= (.users[0].password = $password)'
                 config_changed=1
                 print_success "ShadowTLS 密码已重新生成: ${new_password}"
                 ;;
             4)
                 local new_ss_password=$(openssl rand -base64 16)
                 local ss_tag="shadowsocks-in-${port}"
-                jq --arg tag "$ss_tag" --arg password "$new_ss_password" \
-                    '(.inbounds[] | select(.tag == $tag)) |= (.password = $password)' \
-                    "${CONFIG_FILE}" > /tmp/config_tmp.json && mv /tmp/config_tmp.json "${CONFIG_FILE}"
+                jq_update_config --arg tag "$ss_tag" --arg password "$new_ss_password" \
+                    '(.inbounds[] | select(.tag == $tag)) |= (.password = $password)'
                 config_changed=1
                 print_success "SS 密码已重新生成: ${new_ss_password}"
                 ;;
@@ -3679,7 +3706,7 @@ modify_https_node() {
     
     read -p "请选择要修改的节点序号 (0 取消): " node_choice
     [[ "$node_choice" == "0" ]] && return 0
-    local idx=$((node_choice-1))
+    local idx=$((10#node_choice-1))
     if ! [[ "$node_choice" =~ ^[0-9]+$ ]] || (( idx < 0 || idx >= ${#https_nodes[@]} )); then
         print_error "序号无效"
         return 1
@@ -3690,7 +3717,7 @@ modify_https_node() {
     local port="${INBOUND_PORTS[$array_idx]}"
     local current_sni="${INBOUND_SNIS[$array_idx]}"
     
-    config_changed=0
+    local config_changed=0
     
     while true; do
         echo ""
@@ -3716,13 +3743,11 @@ modify_https_node() {
                     print_warning "端口 ${new_port} 已被占用"; continue
                 fi
                 local new_tag="vless-tls-in-${new_port}"
-                jq --arg old_tag "$tag" --arg new_tag "$new_tag" --argjson new_port "$new_port" \
-                    '(.inbounds[] | select(.tag == $old_tag)) |= (.tag = $new_tag | .listen_port = $new_port)' \
-                    "${CONFIG_FILE}" > /tmp/config_tmp.json && mv /tmp/config_tmp.json "${CONFIG_FILE}"
+                jq_update_config --arg old_tag "$tag" --arg new_tag "$new_tag" --argjson new_port "$new_port" \
+                    '(.inbounds[] | select(.tag == $old_tag)) |= (.tag = $new_tag | .listen_port = $new_port)'
                 if jq -e '.route.rules' "${CONFIG_FILE}" >/dev/null 2>&1; then
-                    jq --arg old_tag "$tag" --arg new_tag "$new_tag" \
-                        '(.route.rules[] | select(.inbound[]? == $old_tag)) |= (.inbound = [.inbound[] | if . == $old_tag then $new_tag else . end])' \
-                        "${CONFIG_FILE}" > /tmp/config_tmp.json && mv /tmp/config_tmp.json "${CONFIG_FILE}"
+                    jq_update_config --arg old_tag "$tag" --arg new_tag "$new_tag" \
+                        '(.route.rules[] | select(.inbound[]? == $old_tag)) |= (.inbound = [.inbound[] | if . == $old_tag then $new_tag else . end])'
                 fi
                 INBOUND_TAGS[$array_idx]="$new_tag"
                 INBOUND_PORTS[$array_idx]="$new_port"
@@ -3738,9 +3763,8 @@ modify_https_node() {
                 if [[ -z "$new_sni" ]]; then
                     new_sni=$(get_random_sni)
                 fi
-                jq --arg tag "$tag" --arg sni "$new_sni" \
-                    '(.inbounds[] | select(.tag == $tag)) |= (.tls.server_name = $sni | .tls.certificate_path = ($sni | "/etc/sing-box/certs/\(.)" + "/cert.pem") | .tls.key_path = ($sni | "/etc/sing-box/certs/\(.)" + "/private.key"))' \
-                    "${CONFIG_FILE}" > /tmp/config_tmp.json && mv /tmp/config_tmp.json "${CONFIG_FILE}"
+                jq_update_config --arg tag "$tag" --arg sni "$new_sni" \
+                    '(.inbounds[] | select(.tag == $tag)) |= (.tls.server_name = $sni | .tls.certificate_path = ($sni | "/etc/sing-box/certs/\(.)" + "/cert.pem") | .tls.key_path = ($sni | "/etc/sing-box/certs/\(.)" + "/private.key"))'
                 gen_cert_for_sni "${new_sni}"
                 INBOUND_SNIS[$array_idx]="$new_sni"
                 current_sni="$new_sni"
@@ -3749,9 +3773,11 @@ modify_https_node() {
                 ;;
             3)
                 local new_uuid=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null)
-                jq --arg tag "$tag" --arg uuid "$new_uuid" \
-                    '(.inbounds[] | select(.tag == $tag)) |= (.users[0].uuid = $uuid)' \
-                    "${CONFIG_FILE}" > /tmp/config_tmp.json && mv /tmp/config_tmp.json "${CONFIG_FILE}"
+                if [[ -z "$new_uuid" ]]; then
+                    print_error "UUID 生成失败"; continue
+                fi
+                jq_update_config --arg tag "$tag" --arg uuid "$new_uuid" \
+                    '(.inbounds[] | select(.tag == $tag)) |= (.users[0].uuid = $uuid)'
                 config_changed=1
                 print_success "UUID 已重新生成: ${new_uuid}"
                 ;;
@@ -3795,7 +3821,7 @@ modify_anytls_node() {
     
     read -p "请选择要修改的节点序号 (0 取消): " node_choice
     [[ "$node_choice" == "0" ]] && return 0
-    local idx=$((node_choice-1))
+    local idx=$((10#node_choice-1))
     if ! [[ "$node_choice" =~ ^[0-9]+$ ]] || (( idx < 0 || idx >= ${#anytls_nodes[@]} )); then
         print_error "序号无效"
         return 1
@@ -3813,7 +3839,7 @@ modify_anytls_node() {
         is_reality=1
     fi
     
-    config_changed=0
+    local config_changed=0
     
     while true; do
         echo ""
@@ -3844,13 +3870,11 @@ modify_anytls_node() {
                 else
                     new_tag="anytls-in-${new_port}"
                 fi
-                jq --arg old_tag "$tag" --arg new_tag "$new_tag" --argjson new_port "$new_port" \
-                    '(.inbounds[] | select(.tag == $old_tag)) |= (.tag = $new_tag | .listen_port = $new_port)' \
-                    "${CONFIG_FILE}" > /tmp/config_tmp.json && mv /tmp/config_tmp.json "${CONFIG_FILE}"
+                jq_update_config --arg old_tag "$tag" --arg new_tag "$new_tag" --argjson new_port "$new_port" \
+                    '(.inbounds[] | select(.tag == $old_tag)) |= (.tag = $new_tag | .listen_port = $new_port)'
                 if jq -e '.route.rules' "${CONFIG_FILE}" >/dev/null 2>&1; then
-                    jq --arg old_tag "$tag" --arg new_tag "$new_tag" \
-                        '(.route.rules[] | select(.inbound[]? == $old_tag)) |= (.inbound = [.inbound[] | if . == $old_tag then $new_tag else . end])' \
-                        "${CONFIG_FILE}" > /tmp/config_tmp.json && mv /tmp/config_tmp.json "${CONFIG_FILE}"
+                    jq_update_config --arg old_tag "$tag" --arg new_tag "$new_tag" \
+                        '(.route.rules[] | select(.inbound[]? == $old_tag)) |= (.inbound = [.inbound[] | if . == $old_tag then $new_tag else . end])'
                 fi
                 INBOUND_TAGS[$array_idx]="$new_tag"
                 INBOUND_PORTS[$array_idx]="$new_port"
@@ -3867,13 +3891,11 @@ modify_anytls_node() {
                     new_sni=$(get_random_sni)
                 fi
                 if [[ $is_reality -eq 1 ]]; then
-                    jq --arg tag "$tag" --arg sni "$new_sni" \
-                        '(.inbounds[] | select(.tag == $tag)) |= (.tls.server_name = $sni | .tls.reality.handshake.server = $sni)' \
-                        "${CONFIG_FILE}" > /tmp/config_tmp.json && mv /tmp/config_tmp.json "${CONFIG_FILE}"
+                    jq_update_config --arg tag "$tag" --arg sni "$new_sni" \
+                        '(.inbounds[] | select(.tag == $tag)) |= (.tls.server_name = $sni | .tls.reality.handshake.server = $sni)'
                 else
-                    jq --arg tag "$tag" --arg sni "$new_sni" \
-                        '(.inbounds[] | select(.tag == $tag)) |= (.tls.server_name = $sni | .tls.certificate_path = ($sni | "/etc/sing-box/certs/\(.)" + "/cert.pem") | .tls.key_path = ($sni | "/etc/sing-box/certs/\(.)" + "/private.key"))' \
-                        "${CONFIG_FILE}" > /tmp/config_tmp.json && mv /tmp/config_tmp.json "${CONFIG_FILE}"
+                    jq_update_config --arg tag "$tag" --arg sni "$new_sni" \
+                        '(.inbounds[] | select(.tag == $tag)) |= (.tls.server_name = $sni | .tls.certificate_path = ($sni | "/etc/sing-box/certs/\(.)" + "/cert.pem") | .tls.key_path = ($sni | "/etc/sing-box/certs/\(.)" + "/private.key"))'
                     gen_cert_for_sni "${new_sni}"
                 fi
                 INBOUND_SNIS[$array_idx]="$new_sni"
@@ -3887,9 +3909,8 @@ modify_anytls_node() {
                 ;;
             3)
                 local new_password=$(openssl rand -hex 16)
-                jq --arg tag "$tag" --arg password "$new_password" \
-                    '(.inbounds[] | select(.tag == $tag)) |= (.users[0].password = $password)' \
-                    "${CONFIG_FILE}" > /tmp/config_tmp.json && mv /tmp/config_tmp.json "${CONFIG_FILE}"
+                jq_update_config --arg tag "$tag" --arg password "$new_password" \
+                    '(.inbounds[] | select(.tag == $tag)) |= (.users[0].password = $password)'
                 config_changed=1
                 print_success "密码已重新生成: ${new_password}"
                 ;;
@@ -4354,7 +4375,7 @@ start_svc() {
     print_info "验证配置文件..."
     
     local check_output
-    check_output=$(${INSTALL_DIR}/sing-box check -c ${CONFIG_FILE} 2>&1)
+    check_output=$("${INSTALL_DIR}/sing-box" check -c "${CONFIG_FILE}" 2>&1)
     local check_exit_code=$?
     
     if [[ $check_exit_code -ne 0 ]]; then
@@ -4363,8 +4384,8 @@ start_svc() {
         echo "$check_output"
         echo ""
         echo -e "${YELLOW}配置文件内容:${NC}"
-        cat ${CONFIG_FILE}
-        exit 1
+        cat "${CONFIG_FILE}"
+        return 1
     fi
     
     if echo "$check_output" | grep -q "WARN"; then
@@ -4388,7 +4409,7 @@ start_svc() {
         else
             journalctl -u sing-box -n 10 --no-pager
         fi
-        exit 1
+        return 1
     fi
 }
 # ==================== 结果显示 ====================
@@ -4597,6 +4618,7 @@ show_main_menu() {
             "ShadowTLS v3") ((shadowtls_count++)) ;;
             "HTTPS") ((https_count++)) ;;
             "AnyTLS") ((anytls_count++)) ;;
+            "AnyTLS+REALITY") ((anytls_count++)) ;;
         esac
     done
     
@@ -4701,8 +4723,9 @@ config_and_view_menu() {
         case $cv_choice in
             1)
                 if [[ -f "${CONFIG_FILE}" ]]; then
-                    generate_config && start_svc
-                    print_success "配置已重新加载并启动服务"
+                    if generate_config && start_svc; then
+                        print_success "配置已重新加载并启动服务"
+                    fi
                 else
                     print_error "配置文件不存在，请先添加节点"
                 fi
@@ -4944,6 +4967,7 @@ domain_route_menu() {
             echo "  (暂无分流规则)"
         else
             # 先按入站节点分组
+            unset inbound_rules 2>/dev/null
             declare -A inbound_rules
             for route in "${DOMAIN_ROUTES[@]}"; do
                 IFS='|' read -r inbound_tag match_type match_value relay_tag desc <<< "$route"
@@ -5499,4 +5523,4 @@ main() {
     main_menu
 }
 
-main
+main "$@"
