@@ -969,8 +969,12 @@ EOFCLIENT
                 local password=$(echo "$inbound" | jq -r '.users[0].password // ""' 2>/dev/null)
                 local sni=$(echo "$inbound" | jq -r '.tls.server_name // ""' 2>/dev/null)
                 local reality_enabled=$(echo "$inbound" | jq -r '.tls.reality.enabled // false' 2>/dev/null)
+                local tls_insecure=$(echo "$inbound" | jq -r '.tls.insecure // false' 2>/dev/null)
                 
                 [[ -z "$sni" ]] && sni="${DEFAULT_SNI}"
+                
+                local insecure_val="0"
+                [[ "$tls_insecure" == "true" ]] && insecure_val="1"
                 
                 if [[ -n "$password" ]]; then
                     if [[ "$reality_enabled" == "true" ]]; then
@@ -980,12 +984,12 @@ EOFCLIENT
                         ANYTLS_LINKS="${ANYTLS_LINKS}${link_text}"
                     else
                         # IPv4 链接
-                        local link_ipv4="anytls://${password}@${SERVER_IP}:${port}?security=tls&fp=chrome&insecure=1&sni=${sni}&type=tcp#AnyTLS-${SERVER_IP}"
+                        local link_ipv4="anytls://${password}@${SERVER_IP}:${port}?security=tls&fp=chrome&insecure=${insecure_val}&sni=${sni}&type=tcp#AnyTLS-${SERVER_IP}"
                         add_link "$link_ipv4" "AnyTLS" "" "${SERVER_IP}" "${port}" "${sni}"
                         
                         # IPv6 链接（如果有）
                         if [[ -n "${SERVER_IPV6}" ]]; then
-                            local link_ipv6="anytls://${password}@[${SERVER_IPV6}]:${port}?security=tls&fp=chrome&insecure=1&sni=${sni}&type=tcp#AnyTLS-[${SERVER_IPV6}]"
+                            local link_ipv6="anytls://${password}@[${SERVER_IPV6}]:${port}?security=tls&fp=chrome&insecure=${insecure_val}&sni=${sni}&type=tcp#AnyTLS-[${SERVER_IPV6}]"
                             add_link "$link_ipv6" "AnyTLS" "" "[${SERVER_IPV6}]" "${port}" "${sni}"
                         fi
                     fi
@@ -1022,7 +1026,7 @@ add_link() {
         "SOCKS5") SOCKS5_LINKS="${SOCKS5_LINKS}${line}" ;;
         "ShadowTLS v3") SHADOWTLS_LINKS="${SHADOWTLS_LINKS}${line}" ;;
         "HTTPS") HTTPS_LINKS="${HTTPS_LINKS}${line}" ;;
-        "AnyTLS") ANYTLS_LINKS="${ANYTLS_LINKS}${line}" ;;
+        "AnyTLS"|"AnyTLS+REALITY") ANYTLS_LINKS="${ANYTLS_LINKS}${line}" ;;
     esac
 }
 
@@ -4152,9 +4156,7 @@ generate_config() {
     print_info "生成最终配置文件..."
 
     if [[ -f "${CONFIG_FILE}" ]]; then
-        local backup_file="${CONFIG_FILE}.bak.$(date +%Y%m%d%H%M%S)"
-        cp "${CONFIG_FILE}" "${backup_file}" 2>/dev/null
-        print_info "已备份配置到: ${backup_file}"
+        cp "${CONFIG_FILE}" "${CONFIG_FILE}.bak" 2>/dev/null
     fi
 
     if [[ -z "$INBOUNDS_JSON" ]]; then
