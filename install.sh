@@ -34,6 +34,13 @@ if [[ "$0" =~ ^https?:// ]]; then
     REPO_RAW_URL="$0"
 elif [[ "${BASH_SOURCE[0]:-$0}" =~ ^https?:// ]]; then
     REPO_RAW_URL="${BASH_SOURCE[0]}"
+else
+    # 从父进程命令行提取 URL（支持 bash <(wget/curl URL) 方式）
+    _pp_cmdline=$(cat /proc/$PPID/cmdline 2>/dev/null | tr '\0' ' ')
+    if [[ "$_pp_cmdline" =~ (https?://[^[:space:]\)]+) ]]; then
+        REPO_RAW_URL="${BASH_REMATCH[1]}"
+    fi
+    unset _pp_cmdline
 fi
 
 # ==================== 依赖检查与自动安装 ====================
@@ -5406,14 +5413,21 @@ setup_sb_shortcut() {
     local sb_target="/etc/sing-box/install.sh"
     
     # 确保脚本在标准位置
-    if [[ ! -f "${SCRIPT_PATH}" ]]; then
+    if [[ ! -f "${SCRIPT_PATH}" ]] && [[ ! -f "${sb_target}" ]]; then
         print_warning "脚本不在磁盘上，跳过创建 sb"
         return
     fi
     
-    # 如果脚本不在标准位置，复制一份
-    if [[ "${SCRIPT_PATH}" != "${sb_target}" ]]; then
-        cp "${SCRIPT_PATH}" "${sb_target}" 2>/dev/null && chmod +x "${sb_target}"
+    # 如果脚本不在标准位置，复制一份（兼容 /dev/fd/xx 进程替换）
+    if [[ "${SCRIPT_PATH}" != "${sb_target}" ]] && [[ ! -f "${sb_target}" ]]; then
+        if [[ -f "${SCRIPT_PATH}" ]]; then
+            cp "${SCRIPT_PATH}" "${sb_target}" 2>/dev/null
+        else
+            cat "${BASH_SOURCE[0]:-$0}" > "${sb_target}" 2>/dev/null
+        fi
+        chmod +x "${sb_target}"
+        SCRIPT_PATH="${sb_target}"
+    elif [[ -f "${sb_target}" ]]; then
         SCRIPT_PATH="${sb_target}"
     fi
     
@@ -5432,23 +5446,19 @@ main() {
         exit 1
     fi
     
-    # 如果脚本不在磁盘上（如 curl|bash 方式运行），先保存到磁盘再重新执行
+    # 如果脚本不在磁盘上（如 bash <(wget ...) 方式运行），先保存到磁盘再重新执行
     local sb_script="/etc/sing-box/install.sh"
     if [[ ! -f "${SCRIPT_PATH}" ]]; then
         mkdir -p /etc/sing-box
-        # 尝试从 BASH_SOURCE 获取
+        # 尝试从 BASH_SOURCE 读取脚本内容（支持 /dev/fd/xx 进程替换）
         local script_src="${BASH_SOURCE[0]:-$0}"
-        if [[ -f "${script_src}" ]]; then
-            cp "${script_src}" "${sb_script}" 2>/dev/null
-        fi
-        # 如果 BASH_SOURCE 也不可用，从远程仓库重新下载
-        if [[ ! -f "${sb_script}" ]]; then
-            if [[ -n "${REPO_RAW_URL}" ]]; then
-                print_info "脚本不在磁盘上，从 ${REPO_RAW_URL} 下载到 ${sb_script} ..."
-                wget -q -O "${sb_script}" "${REPO_RAW_URL}" 2>/dev/null || curl -sL -o "${sb_script}" "${REPO_RAW_URL}" 2>/dev/null || true
-            else
-                print_warning "无法确定脚本远程地址，跳过下载"
-            fi
+        if cat "${script_src}" > "${sb_script}" 2>/dev/null && [[ -s "${sb_script}" ]]; then
+            chmod +x "${sb_script}"
+        elif [[ -n "${REPO_RAW_URL}" ]]; then
+            print_info "脚本不在磁盘上，从 ${REPO_RAW_URL} 下载到 ${sb_script} ..."
+            wget -q -O "${sb_script}" "${REPO_RAW_URL}" 2>/dev/null || curl -sL -o "${sb_script}" "${REPO_RAW_URL}" 2>/dev/null || true
+        else
+            print_warning "无法保存脚本到磁盘"
         fi
         if [[ -f "${sb_script}" ]]; then
             chmod +x "${sb_script}"
