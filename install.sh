@@ -119,6 +119,66 @@ jq_update_config() {
     fi
 }
 
+# ==================== 节点修改辅助函数 ====================
+# 修改节点端口（通用封装）
+# 参数: $1=tag前缀 $2=当前端口 $3=数组索引 $4=tag变量名(nameref) $5=port变量名(nameref)
+modify_port() {
+    local tag_prefix="$1"
+    local current_port="$2"
+    local array_idx="$3"
+    local -n _mp_tag="$4"
+    local -n _mp_port="$5"
+
+    echo -e "${YELLOW}新端口 (留空随机分配)${NC}"
+    local new_port
+    read -p "端口: " new_port
+    if [[ -z "$new_port" ]]; then
+        new_port=$(get_random_free_port)
+        [[ -z "$new_port" ]] && { print_error "无法获取随机端口"; return 1; }
+    fi
+    if ! [[ "$new_port" =~ ^[0-9]+$ ]] || (( 10#new_port < 1 || 10#new_port > 65535 )); then
+        print_error "端口无效"; return 1
+    fi
+    if check_port_in_use "$new_port" && [[ "$new_port" != "$current_port" ]]; then
+        print_warning "端口 ${new_port} 已被占用"; return 1
+    fi
+    local new_tag="${tag_prefix}-${new_port}"
+    jq_update_config --arg old_tag "$_mp_tag" --arg new_tag "$new_tag" --argjson new_port "$new_port" \
+        '(.inbounds[] | select(.tag == $old_tag)) |= (.tag = $new_tag | .listen_port = $new_port)'
+    if jq -e '.route.rules' "${CONFIG_FILE}" >/dev/null 2>&1; then
+        jq_update_config --arg old_tag "$_mp_tag" --arg new_tag "$new_tag" \
+            '(.route.rules[] | select(.inbound[]? == $old_tag)) |= (.inbound = [.inbound[] | if . == $old_tag then $new_tag else . end])'
+    fi
+    INBOUND_TAGS[$array_idx]="$new_tag"
+    INBOUND_PORTS[$array_idx]="$new_port"
+    _mp_tag="$new_tag"
+    _mp_port="$new_port"
+    config_changed=1
+    print_success "端口已修改为 ${new_port}"
+    return 0
+}
+
+# 重新生成密钥/密码（通用封装）
+# 参数: $1=jq过滤表达式 $2=生成命令 $3=jq参数名 $4=成功消息 $5=是否检查空值(yes/no)
+regenerate_secret() {
+    local jq_filter="$1"
+    local gen_cmd="$2"
+    local jq_arg_name="$3"
+    local success_msg="$4"
+    local check_empty="$5"
+    local custom_tag="${6:-$tag}"
+
+    local new_value
+    new_value=$(eval "$gen_cmd")
+    if [[ "$check_empty" == "yes" ]] && [[ -z "$new_value" ]]; then
+        print_error "值生成失败"; return 1
+    fi
+    jq_update_config --arg tag "$custom_tag" --arg "$jq_arg_name" "$new_value" "$jq_filter"
+    config_changed=1
+    print_success "${success_msg}${new_value}"
+    return 0
+}
+
 # ==================== 打印函数 ====================
 print_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
@@ -519,17 +579,7 @@ save_links_to_files() {
     print_success "链接已保存到 ${LINK_DIR}"
 }
 
-load_links_from_files() {
-    mkdir -p "${LINK_DIR}"
-    
-    [[ -f "${ALL_LINKS_FILE}" ]] && ALL_LINKS_TEXT=$(cat "${ALL_LINKS_FILE}")
-    [[ -f "${REALITY_LINKS_FILE}" ]] && REALITY_LINKS=$(cat "${REALITY_LINKS_FILE}")
-    [[ -f "${HYSTERIA2_LINKS_FILE}" ]] && HYSTERIA2_LINKS=$(cat "${HYSTERIA2_LINKS_FILE}")
-    [[ -f "${SOCKS5_LINKS_FILE}" ]] && SOCKS5_LINKS=$(cat "${SOCKS5_LINKS_FILE}")
-    [[ -f "${SHADOWTLS_LINKS_FILE}" ]] && SHADOWTLS_LINKS=$(cat "${SHADOWTLS_LINKS_FILE}")
-    [[ -f "${HTTPS_LINKS_FILE}" ]] && HTTPS_LINKS=$(cat "${HTTPS_LINKS_FILE}")
-    [[ -f "${ANYTLS_LINKS_FILE}" ]] && ANYTLS_LINKS=$(cat "${ANYTLS_LINKS_FILE}")
-}
+
 
 # ==================== 从配置文件加载节点信息 ====================
 load_inbounds_from_config() {
@@ -3210,34 +3260,6 @@ ip_config_menu() {
     done
 }
 
-clear_relay() {
-    echo ""
-    read -p "确认删除全部中转配置并恢复直连? (y/N): " confirm
-    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-        print_info "取消操作"
-        return 0
-    fi
-    
-    # 清空中转数组
-    RELAY_TAGS=()
-    RELAY_JSONS=()
-    RELAY_DESCS=()
-    rm -f "${RELAY_FILE}"
-    
-    # 将所有节点设置为直连
-    if [[ ${#INBOUND_RELAY_TAGS[@]} -gt 0 ]]; then
-        for i in "${!INBOUND_RELAY_TAGS[@]}"; do
-            INBOUND_RELAY_TAGS[$i]="direct"
-        done
-    fi
-    
-    print_success "已删除全部中转配置，当前为直连模式"
-    
-    # 重新生成配置
-    if [[ -n "$INBOUNDS_JSON" ]]; then
-        generate_config && start_svc
-    fi
-}
 
 # ==================== Reality 节点修改 ====================
 modify_reality_node() {
@@ -3287,31 +3309,7 @@ modify_reality_node() {
         
         case $mod_choice in
             1)
-                echo -e "${YELLOW}新端口 (留空随机分配)${NC}"
-                read -p "端口: " new_port
-                if [[ -z "$new_port" ]]; then
-                    new_port=$(get_random_free_port)
-                    [[ -z "$new_port" ]] && { print_error "无法获取随机端口"; continue; }
-                fi
-                if ! [[ "$new_port" =~ ^[0-9]+$ ]] || (( new_port < 1 || new_port > 65535 )); then
-                    print_error "端口无效"; continue
-                fi
-                if check_port_in_use "$new_port" && [[ "$new_port" != "$port" ]]; then
-                    print_warning "端口 ${new_port} 已被占用"; continue
-                fi
-                local new_tag="vless-in-${new_port}"
-                jq_update_config --arg old_tag "$tag" --arg new_tag "$new_tag" --argjson new_port "$new_port" \
-                    '(.inbounds[] | select(.tag == $old_tag)) |= (.tag = $new_tag | .listen_port = $new_port)'
-                if jq -e '.route.rules' "${CONFIG_FILE}" >/dev/null 2>&1; then
-                    jq_update_config --arg old_tag "$tag" --arg new_tag "$new_tag" \
-                        '(.route.rules[] | select(.inbound[]? == $old_tag)) |= (.inbound = [.inbound[] | if . == $old_tag then $new_tag else . end])'
-                fi
-                INBOUND_TAGS[$array_idx]="$new_tag"
-                INBOUND_PORTS[$array_idx]="$new_port"
-                tag="$new_tag"
-                port="$new_port"
-                config_changed=1
-                print_success "端口已修改为 ${new_port}"
+                modify_port "vless-in" "$port" "$array_idx" tag port || continue
                 ;;
             2)
                 echo -e "${YELLOW}新 SNI (留空随机)${NC}"
@@ -3327,21 +3325,13 @@ modify_reality_node() {
                 print_success "SNI 已修改为 ${new_sni}"
                 ;;
             3)
-                local new_uuid=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null)
-                if [[ -z "$new_uuid" ]]; then
-                    print_error "UUID 生成失败"; continue
-                fi
-                jq_update_config --arg tag "$tag" --arg uuid "$new_uuid" \
-                    '(.inbounds[] | select(.tag == $tag)) |= (.users[0].uuid = $uuid)'
-                config_changed=1
-                print_success "UUID 已重新生成: ${new_uuid}"
+                regenerate_secret '(.inbounds[] | select(.tag == $tag)) |= (.users[0].uuid = $uuid)' \
+                    "uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null" \
+                    "uuid" "UUID 已重新生成: " "yes" || continue
                 ;;
             4)
-                local new_sid=$(openssl rand -hex 8)
-                jq_update_config --arg tag "$tag" --arg sid "$new_sid" \
-                    '(.inbounds[] | select(.tag == $tag)) |= (.tls.reality.short_id = [$sid])'
-                config_changed=1
-                print_success "Short ID 已重新生成: ${new_sid}"
+                regenerate_secret '(.inbounds[] | select(.tag == $tag)) |= (.tls.reality.short_id = [$sid])' \
+                    "openssl rand -hex 8" "sid" "Short ID 已重新生成: " "no" || continue
                 ;;
             0)
                 break
@@ -3408,31 +3398,7 @@ modify_hysteria2_node() {
         
         case $mod_choice in
             1)
-                echo -e "${YELLOW}新端口 (留空随机分配)${NC}"
-                read -p "端口: " new_port
-                if [[ -z "$new_port" ]]; then
-                    new_port=$(get_random_free_port)
-                    [[ -z "$new_port" ]] && { print_error "无法获取随机端口"; continue; }
-                fi
-                if ! [[ "$new_port" =~ ^[0-9]+$ ]] || (( new_port < 1 || new_port > 65535 )); then
-                    print_error "端口无效"; continue
-                fi
-                if check_port_in_use "$new_port" && [[ "$new_port" != "$port" ]]; then
-                    print_warning "端口 ${new_port} 已被占用"; continue
-                fi
-                local new_tag="hy2-in-${new_port}"
-                jq_update_config --arg old_tag "$tag" --arg new_tag "$new_tag" --argjson new_port "$new_port" \
-                    '(.inbounds[] | select(.tag == $old_tag)) |= (.tag = $new_tag | .listen_port = $new_port)'
-                if jq -e '.route.rules' "${CONFIG_FILE}" >/dev/null 2>&1; then
-                    jq_update_config --arg old_tag "$tag" --arg new_tag "$new_tag" \
-                        '(.route.rules[] | select(.inbound[]? == $old_tag)) |= (.inbound = [.inbound[] | if . == $old_tag then $new_tag else . end])'
-                fi
-                INBOUND_TAGS[$array_idx]="$new_tag"
-                INBOUND_PORTS[$array_idx]="$new_port"
-                tag="$new_tag"
-                port="$new_port"
-                config_changed=1
-                print_success "端口已修改为 ${new_port}"
+                modify_port "hy2-in" "$port" "$array_idx" tag port || continue
                 ;;
             2)
                 echo -e "${YELLOW}新 SNI (留空随机)${NC}"
@@ -3450,18 +3416,12 @@ modify_hysteria2_node() {
                 print_success "SNI 已修改为 ${new_sni}，证书已重新生成"
                 ;;
             3)
-                local new_password=$(openssl rand -hex 16)
-                jq_update_config --arg tag "$tag" --arg password "$new_password" \
-                    '(.inbounds[] | select(.tag == $tag)) |= (.users[0].password = $password)'
-                config_changed=1
-                print_success "密码已重新生成: ${new_password}"
+                regenerate_secret '(.inbounds[] | select(.tag == $tag)) |= (.users[0].password = $password)' \
+                    "openssl rand -hex 16" "password" "密码已重新生成: " "no" || continue
                 ;;
             4)
-                local new_obfs_password=$(openssl rand -hex 16)
-                jq_update_config --arg tag "$tag" --arg password "$new_obfs_password" \
-                    '(.inbounds[] | select(.tag == $tag)) |= (.obfs.password = $password)'
-                config_changed=1
-                print_success "混淆密码已重新生成: ${new_obfs_password}"
+                regenerate_secret '(.inbounds[] | select(.tag == $tag)) |= (.obfs.password = $password)' \
+                    "openssl rand -hex 16" "password" "混淆密码已重新生成: " "no" || continue
                 ;;
             0)
                 break
@@ -3529,31 +3489,7 @@ modify_socks5_node() {
         
         case $mod_choice in
             1)
-                echo -e "${YELLOW}新端口 (留空随机分配)${NC}"
-                read -p "端口: " new_port
-                if [[ -z "$new_port" ]]; then
-                    new_port=$(get_random_free_port)
-                    [[ -z "$new_port" ]] && { print_error "无法获取随机端口"; continue; }
-                fi
-                if ! [[ "$new_port" =~ ^[0-9]+$ ]] || (( new_port < 1 || new_port > 65535 )); then
-                    print_error "端口无效"; continue
-                fi
-                if check_port_in_use "$new_port" && [[ "$new_port" != "$port" ]]; then
-                    print_warning "端口 ${new_port} 已被占用"; continue
-                fi
-                local new_tag="socks-in-${new_port}"
-                jq_update_config --arg old_tag "$tag" --arg new_tag "$new_tag" --argjson new_port "$new_port" \
-                    '(.inbounds[] | select(.tag == $old_tag)) |= (.tag = $new_tag | .listen_port = $new_port)'
-                if jq -e '.route.rules' "${CONFIG_FILE}" >/dev/null 2>&1; then
-                    jq_update_config --arg old_tag "$tag" --arg new_tag "$new_tag" \
-                        '(.route.rules[] | select(.inbound[]? == $old_tag)) |= (.inbound = [.inbound[] | if . == $old_tag then $new_tag else . end])'
-                fi
-                INBOUND_TAGS[$array_idx]="$new_tag"
-                INBOUND_PORTS[$array_idx]="$new_port"
-                tag="$new_tag"
-                port="$new_port"
-                config_changed=1
-                print_success "端口已修改为 ${new_port}"
+                modify_port "socks-in" "$port" "$array_idx" tag port || continue
                 ;;
             2)
                 echo -e "${YELLOW}新用户名 (留空随机生成)${NC}"
@@ -3568,11 +3504,8 @@ modify_socks5_node() {
                 print_success "用户名已修改为 ${new_user}"
                 ;;
             3)
-                local new_password=$(openssl rand -hex 16)
-                jq_update_config --arg tag "$tag" --arg password "$new_password" \
-                    '(.inbounds[] | select(.tag == $tag)) |= (.users[0].password = $password)'
-                config_changed=1
-                print_success "密码已重新生成: ${new_password}"
+                regenerate_secret '(.inbounds[] | select(.tag == $tag)) |= (.users[0].password = $password)' \
+                    "openssl rand -hex 16" "password" "密码已重新生成: " "no" || continue
                 ;;
             0)
                 break
@@ -3687,19 +3620,13 @@ modify_shadowtls_node() {
                 print_success "SNI 已修改为 ${new_sni}，handshake.server 已同步更新"
                 ;;
             3)
-                local new_password=$(openssl rand -hex 16)
-                jq_update_config --arg tag "$tag" --arg password "$new_password" \
-                    '(.inbounds[] | select(.tag == $tag)) |= (.users[0].password = $password)'
-                config_changed=1
-                print_success "ShadowTLS 密码已重新生成: ${new_password}"
+                regenerate_secret '(.inbounds[] | select(.tag == $tag)) |= (.users[0].password = $password)' \
+                    "openssl rand -hex 16" "password" "ShadowTLS 密码已重新生成: " "no" || continue
                 ;;
             4)
-                local new_ss_password=$(openssl rand -base64 16)
                 local ss_tag="shadowsocks-in-${port}"
-                jq_update_config --arg tag "$ss_tag" --arg password "$new_ss_password" \
-                    '(.inbounds[] | select(.tag == $tag)) |= (.password = $password)'
-                config_changed=1
-                print_success "SS 密码已重新生成: ${new_ss_password}"
+                regenerate_secret '(.inbounds[] | select(.tag == $tag)) |= (.password = $password)' \
+                    "openssl rand -base64 16" "password" "SS 密码已重新生成: " "no" "$ss_tag" || continue
                 ;;
             0)
                 break
@@ -3765,31 +3692,7 @@ modify_https_node() {
         
         case $mod_choice in
             1)
-                echo -e "${YELLOW}新端口 (留空随机分配)${NC}"
-                read -p "端口: " new_port
-                if [[ -z "$new_port" ]]; then
-                    new_port=$(get_random_free_port)
-                    [[ -z "$new_port" ]] && { print_error "无法获取随机端口"; continue; }
-                fi
-                if ! [[ "$new_port" =~ ^[0-9]+$ ]] || (( new_port < 1 || new_port > 65535 )); then
-                    print_error "端口无效"; continue
-                fi
-                if check_port_in_use "$new_port" && [[ "$new_port" != "$port" ]]; then
-                    print_warning "端口 ${new_port} 已被占用"; continue
-                fi
-                local new_tag="vless-tls-in-${new_port}"
-                jq_update_config --arg old_tag "$tag" --arg new_tag "$new_tag" --argjson new_port "$new_port" \
-                    '(.inbounds[] | select(.tag == $old_tag)) |= (.tag = $new_tag | .listen_port = $new_port)'
-                if jq -e '.route.rules' "${CONFIG_FILE}" >/dev/null 2>&1; then
-                    jq_update_config --arg old_tag "$tag" --arg new_tag "$new_tag" \
-                        '(.route.rules[] | select(.inbound[]? == $old_tag)) |= (.inbound = [.inbound[] | if . == $old_tag then $new_tag else . end])'
-                fi
-                INBOUND_TAGS[$array_idx]="$new_tag"
-                INBOUND_PORTS[$array_idx]="$new_port"
-                tag="$new_tag"
-                port="$new_port"
-                config_changed=1
-                print_success "端口已修改为 ${new_port}"
+                modify_port "vless-tls-in" "$port" "$array_idx" tag port || continue
                 ;;
             2)
                 echo -e "${YELLOW}新 SNI (留空随机)${NC}"
@@ -3807,14 +3710,9 @@ modify_https_node() {
                 print_success "SNI 已修改为 ${new_sni}，证书已重新生成"
                 ;;
             3)
-                local new_uuid=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null)
-                if [[ -z "$new_uuid" ]]; then
-                    print_error "UUID 生成失败"; continue
-                fi
-                jq_update_config --arg tag "$tag" --arg uuid "$new_uuid" \
-                    '(.inbounds[] | select(.tag == $tag)) |= (.users[0].uuid = $uuid)'
-                config_changed=1
-                print_success "UUID 已重新生成: ${new_uuid}"
+                regenerate_secret '(.inbounds[] | select(.tag == $tag)) |= (.users[0].uuid = $uuid)' \
+                    "uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null" \
+                    "uuid" "UUID 已重新生成: " "yes" || continue
                 ;;
             0)
                 break
@@ -3887,36 +3785,9 @@ modify_anytls_node() {
         
         case $mod_choice in
             1)
-                echo -e "${YELLOW}新端口 (留空随机分配)${NC}"
-                read -p "端口: " new_port
-                if [[ -z "$new_port" ]]; then
-                    new_port=$(get_random_free_port)
-                    [[ -z "$new_port" ]] && { print_error "无法获取随机端口"; continue; }
-                fi
-                if ! [[ "$new_port" =~ ^[0-9]+$ ]] || (( new_port < 1 || new_port > 65535 )); then
-                    print_error "端口无效"; continue
-                fi
-                if check_port_in_use "$new_port" && [[ "$new_port" != "$port" ]]; then
-                    print_warning "端口 ${new_port} 已被占用"; continue
-                fi
-                local new_tag
-                if [[ $is_reality -eq 1 ]]; then
-                    new_tag="anytls-reality-${new_port}"
-                else
-                    new_tag="anytls-in-${new_port}"
-                fi
-                jq_update_config --arg old_tag "$tag" --arg new_tag "$new_tag" --argjson new_port "$new_port" \
-                    '(.inbounds[] | select(.tag == $old_tag)) |= (.tag = $new_tag | .listen_port = $new_port)'
-                if jq -e '.route.rules' "${CONFIG_FILE}" >/dev/null 2>&1; then
-                    jq_update_config --arg old_tag "$tag" --arg new_tag "$new_tag" \
-                        '(.route.rules[] | select(.inbound[]? == $old_tag)) |= (.inbound = [.inbound[] | if . == $old_tag then $new_tag else . end])'
-                fi
-                INBOUND_TAGS[$array_idx]="$new_tag"
-                INBOUND_PORTS[$array_idx]="$new_port"
-                tag="$new_tag"
-                port="$new_port"
-                config_changed=1
-                print_success "端口已修改为 ${new_port}"
+                local _tag_prefix="anytls-in"
+                [[ $is_reality -eq 1 ]] && _tag_prefix="anytls-reality"
+                modify_port "$_tag_prefix" "$port" "$array_idx" tag port || continue
                 ;;
             2)
                 echo -e "${YELLOW}新 SNI (留空随机)${NC}"
@@ -3943,11 +3814,8 @@ modify_anytls_node() {
                 fi
                 ;;
             3)
-                local new_password=$(openssl rand -hex 16)
-                jq_update_config --arg tag "$tag" --arg password "$new_password" \
-                    '(.inbounds[] | select(.tag == $tag)) |= (.users[0].password = $password)'
-                config_changed=1
-                print_success "密码已重新生成: ${new_password}"
+                regenerate_secret '(.inbounds[] | select(.tag == $tag)) |= (.users[0].password = $password)' \
+                    "openssl rand -hex 16" "password" "密码已重新生成: " "no" || continue
                 ;;
             0)
                 break
@@ -4020,15 +3888,22 @@ delete_single_node() {
         
         # 使用 jq 过滤掉要删除的节点
         local temp_config=$(mktemp)
-        
+
         # 如果是 ShadowTLS，需要同时删除对应的 shadowsocks-in 节点
+        local jq_result=0
         if [[ "$proto" == "ShadowTLS v3" ]]; then
             local ss_tag="shadowsocks-in-${port}"
-            jq --arg tag "$tag" --arg ss_tag "$ss_tag" '.inbounds |= map(select(.tag != $tag and .tag != $ss_tag))' "${CONFIG_FILE}" > "$temp_config"
+            jq --arg tag "$tag" --arg ss_tag "$ss_tag" '.inbounds |= map(select(.tag != $tag and .tag != $ss_tag))' "${CONFIG_FILE}" > "$temp_config" || jq_result=$?
         else
-            jq --arg tag "$tag" '.inbounds |= map(select(.tag != $tag))' "${CONFIG_FILE}" > "$temp_config"
+            jq --arg tag "$tag" '.inbounds |= map(select(.tag != $tag))' "${CONFIG_FILE}" > "$temp_config" || jq_result=$?
         fi
-        
+
+        if [[ $jq_result -ne 0 ]]; then
+            rm -f "$temp_config"
+            print_error "删除节点失败（配置文件解析错误）"
+            return 1
+        fi
+
         mv "$temp_config" "${CONFIG_FILE}"
         
         # 从数组中删除
@@ -4104,7 +3979,9 @@ delete_all_nodes() {
     [[ "$OUTBOUND_IP_MODE" == "ipv6" ]] && dns_strategy="prefer_ipv6"
     [[ "$OUTBOUND_IP_MODE" == "ipv6_only" ]] && dns_strategy="ipv6_only"
     
-    cat > ${CONFIG_FILE} << EOFCONFIG
+    local _gc_tmp
+    _gc_tmp=$(mktemp) || { print_error "创建临时文件失败"; return 1; }
+    cat > "$_gc_tmp" << EOFCONFIG
 {
   "log": {
     "level": "info",
@@ -4138,6 +4015,7 @@ delete_all_nodes() {
   }
 }
 EOFCONFIG
+    mv "$_gc_tmp" "${CONFIG_FILE}"
     
     print_info "停止 sing-box 服务..."
     svc_stop
@@ -4388,7 +4266,9 @@ generate_config() {
   }'
     fi
     
-    cat > ${CONFIG_FILE} << EOFCONFIG
+    local _gc_tmp
+    _gc_tmp=$(mktemp) || { print_error "创建临时文件失败"; return 1; }
+    cat > "$_gc_tmp" << EOFCONFIG
 {
   "log": {
     "level": "info",
@@ -4400,6 +4280,7 @@ generate_config() {
   "route": ${route_json}
 }
 EOFCONFIG
+    mv "$_gc_tmp" "${CONFIG_FILE}"
     
     print_success "配置文件生成完成"
 }
