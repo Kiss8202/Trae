@@ -38,16 +38,109 @@ if [ "$detected_os" != "Alpine" ]; then
 fi
 
 # ---------- 通用函数 ----------
+# 带重试的 curl 下载
+curl_with_retry() {
+    local url=$1 output=$2
+    local max_retries=3 retry=0
+    while [ $retry -lt $max_retries ]; do
+        if curl -fsL --connect-timeout 15 --max-time 120 "$url" -o "$output"; then
+            return 0
+        fi
+        retry=$((retry + 1))
+        echo "下载失败，第 $retry 次重试..."
+        sleep 2
+    done
+    echo "下载失败: $url"
+    return 1
+}
+
+# 获取系统架构对应的 cloudflared 后缀
+get_cloudflared_arch() {
+    local arch=$(uname -m)
+    case "$arch" in
+        x86_64|amd64)   echo "amd64" ;;
+        i386|i686)      echo "386" ;;
+        arm64|aarch64)  echo "arm64" ;;
+        armv7l)         echo "arm" ;;
+        *)              echo "unsupported" ;;
+    esac
+}
+
+# 获取系统架构对应的 xray 后缀
+get_xray_arch() {
+    local arch=$(uname -m)
+    case "$arch" in
+        x86_64|amd64)    echo "64" ;;
+        i386|i686)       echo "32" ;;
+        armv8|arm64|aarch64) echo "arm64-v8a" ;;
+        armv7l)          echo "arm32-v7a" ;;
+        *)               echo "unsupported" ;;
+    esac
+}
+
+# 获取系统架构对应的 sing-box 后缀
+get_singbox_arch() {
+    local arch=$(uname -m)
+    case "$arch" in
+        x86_64|amd64)    echo "amd64" ;;
+        aarch64|arm64)   echo "arm64" ;;
+        armv7l)          echo "armv7" ;;
+        *)               echo "unsupported" ;;
+    esac
+}
+
 cleanup_process() {
     local proc_name=$1
+    local pids
     if [ "$detected_os" = "Alpine" ]; then
-        kill -9 $(ps -ef | grep "$proc_name" | grep -v grep | awk '{print $1}') 2>/dev/null
+        pids=$(ps -ef | grep "$proc_name" | grep -v grep | awk '{print $1}')
     else
-        kill -9 $(ps -ef | grep "$proc_name" | grep -v grep | awk '{print $2}') 2>/dev/null
+        pids=$(ps -ef | grep "$proc_name" | grep -v grep | awk '{print $2}')
     fi
+    [ -n "$pids" ] && kill -9 $pids 2>/dev/null
 }
 
 is_alpine() { [ "$detected_os" = "Alpine" ]; }
+
+# 服务管理通用函数
+svc_start() {
+    if is_alpine; then
+        rc-service argo-cloudflared start >/dev/null 2>&1
+        rc-service argo-core start >/dev/null 2>&1
+    else
+        systemctl start argo-cloudflared.service argo-core.service
+    fi
+}
+
+svc_stop() {
+    if is_alpine; then
+        rc-service argo-cloudflared stop >/dev/null 2>&1
+        rc-service argo-core stop >/dev/null 2>&1
+    else
+        systemctl stop argo-cloudflared.service argo-core.service
+    fi
+}
+
+svc_restart() {
+    if is_alpine; then
+        rc-service argo-cloudflared restart >/dev/null 2>&1
+        rc-service argo-core restart >/dev/null 2>&1
+    else
+        systemctl restart argo-cloudflared.service argo-core.service
+    fi
+}
+
+svc_disable() {
+    if is_alpine; then
+        rc-update del argo-cloudflared default
+        rc-update del argo-core default
+        rm -f /etc/init.d/argo-cloudflared /etc/init.d/argo-core
+    else
+        systemctl disable argo-cloudflared.service argo-core.service
+        rm -f /etc/systemd/system/argo-cloudflared.service /etc/systemd/system/argo-core.service
+        systemctl daemon-reload
+    fi
+}
 
 # base64 生成 vmess 链接（兼容 Alpine busybox）
 gen_vmess_link() {
@@ -67,7 +160,6 @@ gen_vmess_link() {
 
 # 下载并准备核心（根据 core_type 和架构，从官方 API 获取最新版本）
 download_core() {
-    local arch=$(uname -m)
     local download_dir="${1:-.}"
     mkdir -p "$download_dir"
 
@@ -77,22 +169,19 @@ download_core() {
             echo "xray 已存在，跳过下载"
             return
         fi
-        local latest_tag=$(curl -sL https://api.github.com/repos/XTLS/Xray-core/releases/latest | grep '"tag_name"' | tr ',' '\n' | grep '"tag_name"' | sed 's/.*: "\(.*\)".*/\1/')
+        local latest_tag=$(curl -fsL --connect-timeout 10 --max-time 30 https://api.github.com/repos/XTLS/Xray-core/releases/latest | grep '"tag_name"' | sed 's/.*: "\(.*\)".*/\1/' | tr -d ',')
         if [ -z "$latest_tag" ]; then
             echo "无法获取 xray 最新版本，请检查网络"
             exit 1
         fi
-        local arch_suffix
-        case "$arch" in
-            x86_64|amd64)    arch_suffix="64" ;;
-            i386|i686)       arch_suffix="32" ;;
-            armv8|arm64|aarch64) arch_suffix="arm64-v8a" ;;
-            armv7l)          arch_suffix="arm32-v7a" ;;
-            *)               echo "架构 $arch 不支持 xray"; exit 1 ;;
-        esac
+        local arch_suffix=$(get_xray_arch)
+        if [ "$arch_suffix" = "unsupported" ]; then
+            echo "架构 $(uname -m) 不支持 xray"
+            exit 1
+        fi
         local filename="Xray-linux-${arch_suffix}.zip"
         local url="https://github.com/XTLS/Xray-core/releases/download/${latest_tag}/${filename}"
-        curl -sL "$url" -o xray.zip
+        curl_with_retry "$url" "xray.zip" || exit 1
         unzip -d xray_tmp xray.zip
         mv xray_tmp/xray "$core_path"
         rm -rf xray.zip xray_tmp
@@ -104,22 +193,20 @@ download_core() {
             echo "sing-box 已存在，跳过下载"
             return
         fi
-        local latest_tag=$(curl -sL https://api.github.com/repos/SagerNet/sing-box/releases/latest | grep '"tag_name"' | tr ',' '\n' | grep '"tag_name"' | sed 's/.*: "\(.*\)".*/\1/')
+        local latest_tag=$(curl -fsL --connect-timeout 10 --max-time 30 https://api.github.com/repos/SagerNet/sing-box/releases/latest | grep '"tag_name"' | sed 's/.*: "\(.*\)".*/\1/' | tr -d ',')
         if [ -z "$latest_tag" ]; then
             echo "无法获取 sing-box 最新版本，请检查网络"
             exit 1
         fi
         local version=${latest_tag#v}
-        local arch_suffix
-        case "$arch" in
-            x86_64|amd64)    arch_suffix="amd64" ;;
-            aarch64|arm64)   arch_suffix="arm64" ;;
-            armv7l)          arch_suffix="armv7" ;;
-            *)               echo "架构 $arch 不支持 sing-box"; exit 1 ;;
-        esac
+        local arch_suffix=$(get_singbox_arch)
+        if [ "$arch_suffix" = "unsupported" ]; then
+            echo "架构 $(uname -m) 不支持 sing-box"
+            exit 1
+        fi
         local filename="sing-box-${version}-linux-${arch_suffix}.tar.gz"
         local url="https://github.com/SagerNet/sing-box/releases/download/${latest_tag}/${filename}"
-        curl -sL "$url" -o sing-box.tar.gz
+        curl_with_retry "$url" "sing-box.tar.gz" || exit 1
         tar -xzf sing-box.tar.gz
         mv sing-box-*/sing-box "$core_path" 2>/dev/null || mv sing-box "$core_path"
         rm -rf sing-box.tar.gz sing-box-*
@@ -228,14 +315,12 @@ quicktunnel() {
     fi
     download_core "./"
 
-    local arch=$(uname -m)
-    case "$arch" in
-        x86_64|amd64)   curl -sL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o cloudflared-linux ;;
-        i386|i686)      curl -sL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-386 -o cloudflared-linux ;;
-        arm64|aarch64)  curl -sL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64 -o cloudflared-linux ;;
-        armv7l)         curl -sL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm -o cloudflared-linux ;;
-        *)              echo "架构 $arch 无 cloudflared 支持"; exit 1 ;;
-    esac
+    local arch_suffix=$(get_cloudflared_arch)
+    if [ "$arch_suffix" = "unsupported" ]; then
+        echo "架构 $(uname -m) 无 cloudflared 支持"
+        exit 1
+    fi
+    curl_with_retry "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${arch_suffix}" "cloudflared-linux" || exit 1
     chmod +x cloudflared-linux
 
     local uuid=$(cat /proc/sys/kernel/random/uuid)
@@ -297,14 +382,12 @@ installtunnel() {
     mkdir -p /opt/argo
     download_core "/opt/argo"
     if [ ! -f /opt/argo/cloudflared-linux ]; then
-        local arch=$(uname -m)
-        case "$arch" in
-            x86_64|amd64)   curl -sL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /opt/argo/cloudflared-linux ;;
-            i386|i686)      curl -sL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-386 -o /opt/argo/cloudflared-linux ;;
-            arm64|aarch64)  curl -sL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64 -o /opt/argo/cloudflared-linux ;;
-            armv7l)         curl -sL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm -o /opt/argo/cloudflared-linux ;;
-            *)              echo "架构 $arch 无 cloudflared 支持"; exit 1 ;;
-        esac
+        local arch_suffix=$(get_cloudflared_arch)
+        if [ "$arch_suffix" = "unsupported" ]; then
+            echo "架构 $(uname -m) 无 cloudflared 支持"
+            exit 1
+        fi
+        curl_with_retry "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${arch_suffix}" "/opt/argo/cloudflared-linux" || exit 1
         chmod +x /opt/argo/cloudflared-linux
     fi
 
@@ -515,45 +598,20 @@ while true; do
             done
             ;;
         2)
-            if [ -f /etc/alpine-release ]; then
-                rc-service argo-cloudflared start >/dev/null 2>&1
-                rc-service argo-core start >/dev/null 2>&1
-            else
-                systemctl start argo-cloudflared.service argo-core.service
-            fi
+            svc_start
             clear
             ;;
         3)
-            if [ -f /etc/alpine-release ]; then
-                rc-service argo-cloudflared stop >/dev/null 2>&1
-                rc-service argo-core stop >/dev/null 2>&1
-            else
-                systemctl stop argo-cloudflared.service argo-core.service
-            fi
+            svc_stop
             clear
             ;;
         4)
-            if [ -f /etc/alpine-release ]; then
-                rc-service argo-cloudflared restart >/dev/null 2>&1
-                rc-service argo-core restart >/dev/null 2>&1
-            else
-                systemctl restart argo-cloudflared.service argo-core.service
-            fi
+            svc_restart
             clear
             ;;
         5)
-            if [ -f /etc/alpine-release ]; then
-                rc-service argo-cloudflared stop >/dev/null 2>&1
-                rc-service argo-core stop >/dev/null 2>&1
-                rc-update del argo-cloudflared default
-                rc-update del argo-core default
-                rm -f /etc/init.d/argo-cloudflared /etc/init.d/argo-core
-            else
-                systemctl stop argo-cloudflared.service argo-core.service
-                systemctl disable argo-cloudflared.service argo-core.service
-                rm -f /etc/systemd/system/argo-cloudflared.service /etc/systemd/system/argo-core.service
-                systemctl daemon-reload
-            fi
+            svc_stop
+            svc_disable
             rm -rf /opt/argo /usr/bin/argo ~/.cloudflared
             echo "卸载完成，API Token 请手动删除"
             exit 0
@@ -636,7 +694,7 @@ while true; do
             continue
         fi
 
-        isp=$(curl -$ips -s https://speed.cloudflare.com/meta | awk -F\" '{print $26"-"$18"-"$30}' | sed 's/ /_/g')
+        isp=$(curl -$ips -fsL --connect-timeout 10 --max-time 15 https://speed.cloudflare.com/meta | awk -F\" '{print $26"-"$18"-"$30}' | sed 's/ /_/g')
     fi
 
     case $mode in
@@ -650,17 +708,9 @@ while true; do
             installtunnel
             ;;
         3)
-            if is_alpine; then
-                kill -9 $(ps -ef | grep -E "xray|sing-box|cloudflared" | grep -v grep | awk '{print $1}') 2>/dev/null
-                pkill -f "argo-cloudflared.start" 2>/dev/null
-                pkill -f "argo-core.start" 2>/dev/null
-                rm -rf /opt/argo /usr/bin/argo /etc/local.d/argo-*
-            else
-                systemctl stop argo-cloudflared.service argo-core.service 2>/dev/null
-                systemctl disable argo-cloudflared.service argo-core.service 2>/dev/null
-                rm -rf /opt/argo /usr/bin/argo /etc/systemd/system/argo-* ~/.cloudflared
-                systemctl daemon-reload
-            fi
+            svc_stop
+            svc_disable
+            rm -rf /opt/argo /usr/bin/argo ~/.cloudflared
             echo "卸载完成"
             ;;
         4)
