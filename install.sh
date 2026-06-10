@@ -1509,7 +1509,7 @@ setup_reality() {
     PROTO="Reality"
     EXTRA_INFO="UUID: ${NODE_UUID}\nPublic Key: ${REALITY_PUBLIC}\nShort ID: ${SHORT_ID}\nSNI: ${SNI}"
 
-    local link_template="vless://${NODE_UUID}@__IP__:${PORT}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${SNI}&fp=chrome&pbk=${REALITY_PUBLIC}&sid=${SHORT_ID}&type=tcp#Reality-__IP__"
+    local link_template="vless://${NODE_UUID}@__IP__:${PORT}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${SNI}&fp=chrome&pbk=${REALITY_PUBLIC}&sid=${SHORT_ID}&type=tcp"
     add_node_links "Reality" "$link_template" "$EXTRA_INFO" "${SNI}"
     
     INBOUND_TAGS+=("vless-in-${PORT}")
@@ -1602,7 +1602,6 @@ setup_hysteria2() {
     if [[ "$ENABLE_OBFS" =~ ^[Yy]$ ]]; then
         link_template="${link_template}&obfs=salamander&obfs-password=${OBFS_PASSWORD}"
     fi
-    link_template="${link_template}#Hysteria2-__IP__"
     add_node_links "Hysteria2" "$link_template" "$EXTRA_INFO" "${HY2_SNI}"
     
     INBOUND_TAGS+=("hy2-in-${PORT}")
@@ -1666,9 +1665,9 @@ setup_socks5() {
     # 构建链接模板
     local link_template=""
     if [[ "$ENABLE_AUTH" =~ ^[Yy]$ ]]; then
-        link_template="socks5://${NODE_SOCKS_USER}:${NODE_SOCKS_PASS}@__IP__:${PORT}#SOCKS5-__IP__"
+        link_template="socks5://${NODE_SOCKS_USER}:${NODE_SOCKS_PASS}@__IP__:${PORT}"
     else
-        link_template="socks5://__IP__:${PORT}#SOCKS5-__IP__"
+        link_template="socks5://__IP__:${PORT}"
     fi
     add_node_links "SOCKS5" "$link_template" "$EXTRA_INFO" ""
     
@@ -1827,7 +1826,7 @@ setup_https() {
     PROTO="HTTPS"
     EXTRA_INFO="UUID: ${NODE_UUID}\n证书: 自签证书(${HTTPS_SNI})\nSNI: ${HTTPS_SNI}"
 
-    local link_template="vless://${NODE_UUID}@__IP__:${PORT}?encryption=none&security=tls&sni=${HTTPS_SNI}&type=tcp&allowInsecure=1#HTTPS-__IP__"
+    local link_template="vless://${NODE_UUID}@__IP__:${PORT}?encryption=none&security=tls&sni=${HTTPS_SNI}&type=tcp&allowInsecure=1"
     add_node_links "HTTPS" "$link_template" "$EXTRA_INFO" "${HTTPS_SNI}"
     
     INBOUND_TAGS+=("vless-tls-in-${PORT}")
