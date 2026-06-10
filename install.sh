@@ -3827,11 +3827,7 @@ delete_all_nodes() {
     echo -e "  3. 需要重新添加节点"
     echo ""
 
-    # 删除所有节点需要输入 YES 确认，不能用普通 confirm
-    local confirm_delete
-    read -p "确认删除所有节点? (输入 'YES' 确认): " confirm_delete
-
-    if [[ "$confirm_delete" != "YES" ]]; then
+    if ! confirm "确认删除所有节点"; then
         print_info "取消删除操作"
         return 0
     fi
