@@ -1533,8 +1533,11 @@ setup_hysteria2() {
     HY2_SNI=${HY2_SNI:-${DEFAULT_SNI}}
     
     # 是否启用 Salamander 混淆
-    read -p "是否启用 Salamander 混淆？(y/N): " ENABLE_OBFS
-    ENABLE_OBFS=${ENABLE_OBFS:-N}
+    if confirm "是否启用 Salamander 混淆"; then
+        ENABLE_OBFS="Y"
+    else
+        ENABLE_OBFS="N"
+    fi
     OBFS_PASSWORD=""
     if [[ "$ENABLE_OBFS" =~ ^[Yy]$ ]]; then
         read -p "混淆密码 (留空随机生成16位hex): " OBFS_PASSWORD
@@ -1593,29 +1596,14 @@ setup_hysteria2() {
     
     # 保存新添加节点的链接（只用于显示）
     CURRENT_NEW_LINKS=""
-    
-    # IPv4 链接
-    local link_ipv4="hysteria2://${NODE_HY2_PASSWORD}@${SERVER_IP}:${PORT}?insecure=1&sni=${HY2_SNI}"
+
+    # 构建链接模板
+    local link_template="hysteria2://${NODE_HY2_PASSWORD}@__IP__:${PORT}?insecure=1&sni=${HY2_SNI}"
     if [[ "$ENABLE_OBFS" =~ ^[Yy]$ ]]; then
-        link_ipv4="${link_ipv4}&obfs=salamander&obfs-password=${OBFS_PASSWORD}"
+        link_template="${link_template}&obfs=salamander&obfs-password=${OBFS_PASSWORD}"
     fi
-    link_ipv4="${link_ipv4}#Hysteria2-${SERVER_IP}"
-    add_link "$link_ipv4" "Hysteria2" "$EXTRA_INFO" "${SERVER_IP}" "${PORT}" "${HY2_SNI}"
-    LINK="$link_ipv4"  # 默认链接
-    
-    # 添加到新链接显示
-    CURRENT_NEW_LINKS="${CURRENT_NEW_LINKS}[Hysteria2] ${SERVER_IP}:${PORT} (SNI: ${HY2_SNI})\n${link_ipv4}\n----------------------------------------\n\n"
-    
-    # IPv6 链接（如果有）
-    if [[ -n "${SERVER_IPV6}" ]]; then
-        local link_ipv6="hysteria2://${NODE_HY2_PASSWORD}@[${SERVER_IPV6}]:${PORT}?insecure=1&sni=${HY2_SNI}"
-        if [[ "$ENABLE_OBFS" =~ ^[Yy]$ ]]; then
-            link_ipv6="${link_ipv6}&obfs=salamander&obfs-password=${OBFS_PASSWORD}"
-        fi
-        link_ipv6="${link_ipv6}#Hysteria2-[${SERVER_IPV6}]"
-        add_link "$link_ipv6" "Hysteria2" "$EXTRA_INFO" "[${SERVER_IPV6}]" "${PORT}" "${HY2_SNI}"
-        CURRENT_NEW_LINKS="${CURRENT_NEW_LINKS}[Hysteria2] [${SERVER_IPV6}]:${PORT} (SNI: ${HY2_SNI})\n${link_ipv6}\n----------------------------------------\n\n"
-    fi
+    link_template="${link_template}#Hysteria2-__IP__"
+    add_node_links "Hysteria2" "$link_template" "$EXTRA_INFO" "${HY2_SNI}"
     
     INBOUND_TAGS+=("hy2-in-${PORT}")
     INBOUND_PORTS+=("${PORT}")
@@ -1631,8 +1619,11 @@ setup_hysteria2() {
 setup_socks5() {
     echo ""
     read_port_with_check 1080
-    read -p "是否启用认证? [Y/n]: " ENABLE_AUTH
-    ENABLE_AUTH=${ENABLE_AUTH:-Y}
+    if confirm "是否启用认证" "Y"; then
+        ENABLE_AUTH="Y"
+    else
+        ENABLE_AUTH="N"
+    fi
     
     print_info "生成配置文件..."
     
@@ -1668,34 +1659,18 @@ setup_socks5() {
     fi
     
     PROTO="SOCKS5"
-    
+
     # 保存新添加节点的链接（只用于显示）
     CURRENT_NEW_LINKS=""
-    
-    # IPv4 链接
-    local link_ipv4=""
+
+    # 构建链接模板
+    local link_template=""
     if [[ "$ENABLE_AUTH" =~ ^[Yy]$ ]]; then
-        link_ipv4="socks5://${NODE_SOCKS_USER}:${NODE_SOCKS_PASS}@${SERVER_IP}:${PORT}#SOCKS5-${SERVER_IP}"
+        link_template="socks5://${NODE_SOCKS_USER}:${NODE_SOCKS_PASS}@__IP__:${PORT}#SOCKS5-__IP__"
     else
-        link_ipv4="socks5://${SERVER_IP}:${PORT}#SOCKS5-${SERVER_IP}"
+        link_template="socks5://__IP__:${PORT}#SOCKS5-__IP__"
     fi
-    add_link "$link_ipv4" "SOCKS5" "$EXTRA_INFO" "${SERVER_IP}" "${PORT}" ""
-    LINK="$link_ipv4"  # 默认链接
-    
-    # 添加到新链接显示
-    CURRENT_NEW_LINKS="${CURRENT_NEW_LINKS}[SOCKS5] ${SERVER_IP}:${PORT}\n${link_ipv4}\n----------------------------------------\n\n"
-    
-    # IPv6 链接（如果有）
-    if [[ -n "${SERVER_IPV6}" ]]; then
-        local link_ipv6=""
-        if [[ "$ENABLE_AUTH" =~ ^[Yy]$ ]]; then
-            link_ipv6="socks5://${NODE_SOCKS_USER}:${NODE_SOCKS_PASS}@[${SERVER_IPV6}]:${PORT}#SOCKS5-[${SERVER_IPV6}]"
-        else
-            link_ipv6="socks5://[${SERVER_IPV6}]:${PORT}#SOCKS5-[${SERVER_IPV6}]"
-        fi
-        add_link "$link_ipv6" "SOCKS5" "$EXTRA_INFO" "[${SERVER_IPV6}]" "${PORT}" ""
-        CURRENT_NEW_LINKS="${CURRENT_NEW_LINKS}[SOCKS5] [${SERVER_IPV6}]:${PORT}\n${link_ipv6}\n----------------------------------------\n\n"
-    fi
+    add_node_links "SOCKS5" "$link_template" "$EXTRA_INFO" ""
     
     INBOUND_TAGS+=("socks-in-${PORT}")
     INBOUND_PORTS+=("${PORT}")
@@ -1872,8 +1847,11 @@ setup_anytls() {
 
     echo -e "${YELLOW}是否启用 REALITY 伪装？(y/N)${NC}"
     echo -e "${CYAN}启用后，服务端使用 AnyTLS+REALITY，客户端需使用 sing-box 并导入 JSON 配置${NC}"
-    read -p "启用 REALITY? [y/N]: " ENABLE_REALITY
-    ENABLE_REALITY=${ENABLE_REALITY:-N}
+    if confirm "启用 REALITY"; then
+        ENABLE_REALITY="Y"
+    else
+        ENABLE_REALITY="N"
+    fi
 
     echo -e "${YELLOW}请输入 SNI 域名（用于 TLS 及 REALITY handshake）${NC}"
     echo -e "${CYAN}例如: ${DEFAULT_SNI1}${NC}"
@@ -1901,8 +1879,11 @@ setup_anytls() {
         # 询问是否允许不安全连接
         echo -e "${YELLOW}是否允许跳过证书验证（insecure）？${NC}"
         echo -e "${CYAN}允许可以简化客户端配置，但会降低安全性（中间人攻击风险）${NC}"
-        read -p "允许 insecure? [y/N]: " ALLOW_INSECURE
-        ALLOW_INSECURE=${ALLOW_INSECURE:-N}
+        if confirm "允许 insecure"; then
+            ALLOW_INSECURE="Y"
+        else
+            ALLOW_INSECURE="N"
+        fi
     fi
 
     # 询问 uTLS 指纹（可选）
@@ -3042,8 +3023,7 @@ ip_config_menu() {
                 save_ip_config
                 print_success "入站已设置为 IPv4"
                 echo -e "${YELLOW}提示: 需要重新生成配置才能生效${NC}"
-                read -p "是否立即重新生成配置? (y/N): " regen
-                if [[ "$regen" =~ ^[Yy]$ ]] && [[ -n "$INBOUNDS_JSON" ]]; then
+                if confirm "是否立即重新生成配置" && [[ -n "$INBOUNDS_JSON" ]]; then
                     generate_config && start_svc
                 fi
                 ;;
@@ -3057,8 +3037,7 @@ ip_config_menu() {
                 save_ip_config
                 print_success "入站已设置为 IPv6"
                 echo -e "${YELLOW}提示: 需要重新生成配置才能生效${NC}"
-                read -p "是否立即重新生成配置? (y/N): " regen
-                if [[ "$regen" =~ ^[Yy]$ ]] && [[ -n "$INBOUNDS_JSON" ]]; then
+                if confirm "是否立即重新生成配置" && [[ -n "$INBOUNDS_JSON" ]]; then
                     generate_config && start_svc
                 fi
                 ;;
@@ -3068,8 +3047,7 @@ ip_config_menu() {
                 print_success "入站已设置为双栈 (IPv4+IPv6)"
                 echo -e "${YELLOW}提示: 双栈模式将同时监听 IPv4 和 IPv6${NC}"
                 echo -e "${YELLOW}提示: 需要重新生成配置才能生效${NC}"
-                read -p "是否立即重新生成配置? (y/N): " regen
-                if [[ "$regen" =~ ^[Yy]$ ]] && [[ -n "$INBOUNDS_JSON" ]]; then
+                if confirm "是否立即重新生成配置" && [[ -n "$INBOUNDS_JSON" ]]; then
                     generate_config && start_svc
                 fi
                 ;;
@@ -3078,8 +3056,7 @@ ip_config_menu() {
                 save_ip_config
                 print_success "出站已设置为 IPv4"
                 echo -e "${YELLOW}提示: 需要重新生成配置才能生效${NC}"
-                read -p "是否立即重新生成配置? (y/N): " regen
-                if [[ "$regen" =~ ^[Yy]$ ]] && [[ -n "$INBOUNDS_JSON" ]]; then
+                if confirm "是否立即重新生成配置" && [[ -n "$INBOUNDS_JSON" ]]; then
                     generate_config && start_svc
                 fi
                 ;;
@@ -3094,8 +3071,7 @@ ip_config_menu() {
                 print_success "出站已设置为 IPv6 优先"
                 echo -e "${YELLOW}提示: IPv6 优先出站，IPv6 不可用时回退到 IPv4${NC}"
                 echo -e "${YELLOW}提示: 需要重新生成配置才能生效${NC}"
-                read -p "是否立即重新生成配置? (y/N): " regen
-                if [[ "$regen" =~ ^[Yy]$ ]] && [[ -n "$INBOUNDS_JSON" ]]; then
+                if confirm "是否立即重新生成配置" && [[ -n "$INBOUNDS_JSON" ]]; then
                     generate_config && start_svc
                 fi
                 ;;
@@ -3110,8 +3086,7 @@ ip_config_menu() {
                 print_success "出站已设置为仅 IPv6"
                 echo -e "${YELLOW}提示: 仅使用 IPv6 出站，IPv4 将无法出站${NC}"
                 echo -e "${YELLOW}提示: 需要重新生成配置才能生效${NC}"
-                read -p "是否立即重新生成配置? (y/N): " regen
-                if [[ "$regen" =~ ^[Yy]$ ]] && [[ -n "$INBOUNDS_JSON" ]]; then
+                if confirm "是否立即重新生成配置" && [[ -n "$INBOUNDS_JSON" ]]; then
                     generate_config && start_svc
                 fi
                 ;;
@@ -3121,8 +3096,7 @@ ip_config_menu() {
                 print_success "出站已设置为双栈 (IPv4+IPv6)"
                 echo -e "${YELLOW}提示: 双栈模式将同时使用 IPv4 和 IPv6，由系统自动选择${NC}"
                 echo -e "${YELLOW}提示: 需要重新生成配置才能生效${NC}"
-                read -p "是否立即重新生成配置? (y/N): " regen
-                if [[ "$regen" =~ ^[Yy]$ ]] && [[ -n "$INBOUNDS_JSON" ]]; then
+                if confirm "是否立即重新生成配置" && [[ -n "$INBOUNDS_JSON" ]]; then
                     generate_config && start_svc
                 fi
                 ;;
@@ -3918,11 +3892,8 @@ EOFCONFIG
     cleanup_links
     
     print_success "所有节点已删除，配置文件已重置"
-    
-    read -p "是否启动空配置的 sing-box 服务? (y/N): " restart_service
-    restart_service=${restart_service:-N}
-    
-    if [[ "$restart_service" =~ ^[Yy]$ ]]; then
+
+    if confirm "是否启动空配置的 sing-box 服务"; then
         svc_start
         sleep 2
         if svc_is_active; then
@@ -4225,11 +4196,7 @@ start_svc() {
 show_result() {
     clear
     echo ""
-    echo -e "${CYAN}╔═══════════════════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║                                                       ║${NC}"
-    echo -e "${CYAN}║               ${GREEN}🎉 配置完成！${CYAN}            ║${NC}"
-    echo -e "${CYAN}║                                                       ║${NC}"
-    echo -e "${CYAN}╚═══════════════════════════════════════════════════════╝${NC}"
+    menu_header "🎉 配置完成！"
     echo ""
     echo -e "${YELLOW}服务器信息:${NC}"
     echo -e "  协议: ${GREEN}${PROTO}${NC}"
@@ -4534,7 +4501,7 @@ config_and_view_menu() {
                 else
                     print_error "配置文件不存在，请先添加节点"
                 fi
-                read -p "按回车返回..." _
+                pause
                 ;;
             2)
                 clear
@@ -4608,11 +4575,11 @@ config_and_view_menu() {
                 ;;
             10)
                 delete_single_node
-                read -p "按回车返回..." _
+                pause
                 ;;
             11)
                 delete_all_nodes
-                read -p "按回车返回..." _
+                pause
                 ;;
             0)
                 break
@@ -5217,7 +5184,7 @@ main_menu() {
                 ;;
         esac
         echo ""
-        read -p "按回车返回主菜单..." _
+        pause
     done
 }
 
