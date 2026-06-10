@@ -143,6 +143,7 @@ confirm() {
     else
         prompt="${msg} (y/N): "
     fi
+    local ans
     read -p "$prompt" ans
     ans="${ans:-$default}"
     [[ "$ans" =~ ^[Yy]$ ]]
