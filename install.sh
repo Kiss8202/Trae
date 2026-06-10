@@ -2967,6 +2967,7 @@ setup_relay() {
                     continue
                 elif [[ "$del_idx" == "0" ]]; then
                     echo ""
+                    local confirm
                     read -p "确认删除全部中转? (y/N): " confirm
                     if [[ "$confirm" =~ ^[Yy]$ ]]; then
                         RELAY_TAGS=()
@@ -2996,6 +2997,7 @@ setup_relay() {
                     local del_desc="${RELAY_DESCS[$d]}"
                     
                     echo ""
+                    local confirm
                     read -p "确认删除中转: ${del_desc}? (y/N): " confirm
                     if [[ "$confirm" =~ ^[Yy]$ ]]; then
                         # 删除中转
@@ -3924,6 +3926,7 @@ delete_single_node() {
     echo -e "  TAG: ${tag}"
     echo ""
     
+    local confirm_delete
     read -p "确认删除? (y/N): " confirm_delete
     confirm_delete=${confirm_delete:-N}
     
@@ -4010,6 +4013,7 @@ delete_all_nodes() {
     echo -e "  3. 需要重新添加节点"
     echo ""
     
+    local confirm_delete
     read -p "确认删除所有节点? (输入 'YES' 确认): " confirm_delete
     
     if [[ "$confirm_delete" != "YES" ]]; then
@@ -4852,6 +4856,7 @@ delete_self() {
     echo -e "  3. 此操作会完全卸载 sing-box 和脚本"
     echo ""
     
+    local CONFIRM_DELETE
     read -p "确认完全卸载？(y/N): " CONFIRM_DELETE
     CONFIRM_DELETE=${CONFIRM_DELETE:-N}
     
@@ -5088,6 +5093,7 @@ domain_route_menu() {
             3)
                 echo ""
                 echo -e "${YELLOW}此操作将删除所有分流规则！${NC}"
+                local confirm
                 read -p "确认清空？(y/N): " confirm
                 if [[ "$confirm" =~ ^[Yy]$ ]]; then
                     DOMAIN_ROUTES=()
@@ -5249,6 +5255,7 @@ add_domain_route() {
     # 重新生成配置
     if [[ -n "$INBOUNDS_JSON" ]]; then
         echo ""
+        local confirm
         read -p "是否立即重新生成配置并生效？(y/N): " confirm
         if [[ "$confirm" =~ ^[Yy]$ ]]; then
             generate_config && start_svc
@@ -5394,6 +5401,7 @@ $orig_idx|$route"
     # 重新生成配置
     if [[ -n "$INBOUNDS_JSON" ]]; then
         echo ""
+        local confirm
         read -p "是否立即重新生成配置并生效？(y/N): " confirm
         if [[ "$confirm" =~ ^[Yy]$ ]]; then
             generate_config && start_svc
