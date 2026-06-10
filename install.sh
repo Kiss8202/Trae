@@ -153,6 +153,146 @@ cleanup_temp_files() {
 }
 trap cleanup_temp_files EXIT INT TERM
 
+# ==================== 交互辅助函数 ====================
+# 暂停等待用户按回车
+pause() {
+    read -p "按回车继续..." _
+}
+
+# 确认提示，返回 0 表示确认(y/Y)，1 表示取消
+confirm() {
+    local msg="${1:-确认操作?}"
+    local default="${2:-N}"
+    local prompt
+    if [[ "$default" == "Y" || "$default" == "y" ]]; then
+        prompt="${msg} (Y/n): "
+    else
+        prompt="${msg} (y/N): "
+    fi
+    local ans
+    read -p "$prompt" ans
+    ans="${ans:-$default}"
+    [[ "$ans" =~ ^[Yy]$ ]]
+}
+
+# 显示菜单标题边框
+menu_header() {
+    local title="$1"
+    echo ""
+    echo -e "${CYAN}╔═══════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║              ${GREEN}${title}${CYAN}              ║${NC}"
+    echo -e "${CYAN}╚═══════════════════════════════════════════════════════╝${NC}"
+    echo ""
+}
+
+# 显示协议链接并暂停
+# 用法: show_protocol_links <标题> <链接变量> <空提示> [额外提示]
+show_protocol_links() {
+    local title="$1"
+    local links="$2"
+    local empty_msg="$3"
+    local extra_tip="${4:-}"
+    clear
+    echo -e "${YELLOW}${title}:${NC}"
+    echo ""
+    if [[ -z "$links" ]]; then
+        echo "$empty_msg"
+    else
+        echo -e "$links"
+        [[ -n "$extra_tip" ]] && echo -e "${CYAN}${extra_tip}${NC}"
+    fi
+    echo ""
+    pause
+}
+
+# 添加节点链接（IPv4 + IPv6）
+# 用法: add_node_links <协议名> <链接模板(__IP__占位)> <额外信息> <SNI>
+add_node_links() {
+    local proto="$1"
+    local link_template="$2"
+    local extra_info="$3"
+    local sni="$4"
+
+    local link_ipv4="${link_template/__IP__/${SERVER_IP}}#${proto}-${SERVER_IP}"
+    add_link "$link_ipv4" "$proto" "$extra_info" "${SERVER_IP}" "${PORT}" "$sni"
+    LINK="$link_ipv4"
+
+    CURRENT_NEW_LINKS="[${proto}] ${SERVER_IP}:${PORT}"
+    [[ -n "$sni" ]] && CURRENT_NEW_LINKS="${CURRENT_NEW_LINKS} (SNI: ${sni})"
+    CURRENT_NEW_LINKS="${CURRENT_NEW_LINKS}\n${link_ipv4}\n----------------------------------------\n\n"
+
+    if [[ -n "${SERVER_IPV6}" ]]; then
+        local link_ipv6="${link_template/__IP__/[${SERVER_IPV6}]}#${proto}-[${SERVER_IPV6}]"
+        add_link "$link_ipv6" "$proto" "$extra_info" "[${SERVER_IPV6}]" "${PORT}" "$sni"
+        CURRENT_NEW_LINKS="${CURRENT_NEW_LINKS}[${proto}] [${SERVER_IPV6}]:${PORT}"
+        [[ -n "$sni" ]] && CURRENT_NEW_LINKS="${CURRENT_NEW_LINKS} (SNI: ${sni})"
+        CURRENT_NEW_LINKS="${CURRENT_NEW_LINKS}\n${link_ipv6}\n----------------------------------------\n\n"
+    fi
+}
+
+# 生成 ShadowTLS 客户端配置 JSON
+# 用法: generate_shadowtls_client_config <服务器IP> <端口> <SS密码> <ShadowTLS密码> <SNI>
+generate_shadowtls_client_config() {
+    local server="$1"
+    local port="$2"
+    local ss_password="$3"
+    local stls_password="$4"
+    local sni="$5"
+    cat << EOFCLIENT
+{
+  "log": {"level": "info"},
+  "dns": {"servers": [{"tag": "google", "type": "udp", "server": "8.8.8.8"}]},
+  "inbounds": [
+    {
+      "type": "mixed",
+      "tag": "mixed-in",
+      "listen": "127.0.0.1",
+      "listen_port": 1080,
+      "sniff": true,
+      "set_system_proxy": false
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "selector",
+      "tag": "proxy",
+      "outbounds": ["ShadowTLS-${port}"],
+      "default": "ShadowTLS-${port}"
+    },
+    {
+      "type": "shadowsocks",
+      "tag": "ShadowTLS-${port}",
+      "method": "2022-blake3-aes-128-gcm",
+      "password": "${ss_password}",
+      "detour": "shadowtls-out-${port}"
+    },
+    {
+      "type": "shadowtls",
+      "tag": "shadowtls-out-${port}",
+      "server": "${server}",
+      "server_port": ${port},
+      "version": 3,
+      "password": "${stls_password}",
+      "tls": {
+        "enabled": true,
+        "server_name": "${sni}",
+        "utls": {"enabled": true, "fingerprint": "chrome"}
+      }
+    },
+    {"type": "direct", "tag": "direct"},
+    {"type": "block", "tag": "block"}
+  ],
+  "route": {
+    "rules": [
+      {"geosite": "cn", "outbound": "direct"},
+      {"geoip": "cn", "outbound": "direct"}
+    ],
+    "final": "proxy"
+  }
+}
+EOFCLIENT
+}
+
 # ==================== jq 配置文件原子更新 ====================
 # 用法: jq_update_config <jq参数...>
 # 功能: 原子性更新配置文件，先写临时文件再替换，失败时保留原文件
