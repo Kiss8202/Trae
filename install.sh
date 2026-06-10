@@ -1092,58 +1092,7 @@ regenerate_links_from_config() {
                         
                         # 生成 IPv4 客户端配置文件
                         local client_config_file_ipv4="${LINK_DIR}/shadowtls_client_${port}_ipv4.json"
-                        cat > "${client_config_file_ipv4}" << EOFCLIENT
-{
-  "log": {"level": "info"},
-  "dns": {"servers": [{"tag": "google", "type": "udp", "server": "8.8.8.8"}]},
-  "inbounds": [
-    {
-      "type": "mixed",
-      "tag": "mixed-in",
-      "listen": "127.0.0.1",
-      "listen_port": 1080,
-      "sniff": true
-    }
-  ],
-  "outbounds": [
-    {
-      "type": "selector",
-      "tag": "proxy",
-      "outbounds": ["ShadowTLS-${port}"],
-      "default": "ShadowTLS-${port}"
-    },
-    {
-      "type": "shadowsocks",
-      "tag": "ShadowTLS-${port}",
-      "method": "${ss_method}",
-      "password": "${ss_password}",
-      "detour": "shadowtls-out-${port}"
-    },
-    {
-      "type": "shadowtls",
-      "tag": "shadowtls-out-${port}",
-      "server": "${SERVER_IP}",
-      "server_port": ${port},
-      "version": 3,
-      "password": "${shadowtls_password}",
-      "tls": {
-        "enabled": true,
-        "server_name": "${sni}",
-        "utls": {"enabled": true, "fingerprint": "chrome"}
-      }
-    },
-    {"type": "direct", "tag": "direct"},
-    {"type": "block", "tag": "block"}
-  ],
-  "route": {
-    "rules": [
-      {"geosite": "cn", "outbound": "direct"},
-      {"geoip": "cn", "outbound": "direct"}
-    ],
-    "final": "proxy"
-  }
-}
-EOFCLIENT
+                        generate_shadowtls_client_config "${SERVER_IP}" "${port}" "${ss_password}" "${shadowtls_password}" "${sni}" > "${client_config_file_ipv4}"
                         
                         # IPv6 链接（如果有）
                         if [[ -n "${SERVER_IPV6}" ]]; then
@@ -1154,58 +1103,7 @@ EOFCLIENT
                             
                             # 生成 IPv6 客户端配置文件
                             local client_config_file_ipv6="${LINK_DIR}/shadowtls_client_${port}_ipv6.json"
-                            cat > "${client_config_file_ipv6}" << EOFCLIENT
-{
-  "log": {"level": "info"},
-  "dns": {"servers": [{"tag": "google", "type": "udp", "server": "8.8.8.8"}]},
-  "inbounds": [
-    {
-      "type": "mixed",
-      "tag": "mixed-in",
-      "listen": "127.0.0.1",
-      "listen_port": 1080,
-      "sniff": true
-    }
-  ],
-  "outbounds": [
-    {
-      "type": "selector",
-      "tag": "proxy",
-      "outbounds": ["ShadowTLS-${port}"],
-      "default": "ShadowTLS-${port}"
-    },
-    {
-      "type": "shadowsocks",
-      "tag": "ShadowTLS-${port}",
-      "method": "${ss_method}",
-      "password": "${ss_password}",
-      "detour": "shadowtls-out-${port}"
-    },
-    {
-      "type": "shadowtls",
-      "tag": "shadowtls-out-${port}",
-      "server": "${SERVER_IPV6}",
-      "server_port": ${port},
-      "version": 3,
-      "password": "${shadowtls_password}",
-      "tls": {
-        "enabled": true,
-        "server_name": "${sni}",
-        "utls": {"enabled": true, "fingerprint": "chrome"}
-      }
-    },
-    {"type": "direct", "tag": "direct"},
-    {"type": "block", "tag": "block"}
-  ],
-  "route": {
-    "rules": [
-      {"geosite": "cn", "outbound": "direct"},
-      {"geoip": "cn", "outbound": "direct"}
-    ],
-    "final": "proxy"
-  }
-}
-EOFCLIENT
+                            generate_shadowtls_client_config "${SERVER_IPV6}" "${port}" "${ss_password}" "${shadowtls_password}" "${sni}" > "${client_config_file_ipv6}"
                         fi
                     fi
                 fi
@@ -1610,24 +1508,9 @@ setup_reality() {
     # 生成 Reality 链接 - 同时支持 IPv4 和 IPv6
     PROTO="Reality"
     EXTRA_INFO="UUID: ${NODE_UUID}\nPublic Key: ${REALITY_PUBLIC}\nShort ID: ${SHORT_ID}\nSNI: ${SNI}"
-    
-    # 保存新添加节点的链接（只用于显示）
-    CURRENT_NEW_LINKS=""
-    
-    # IPv4 链接
-    local link_ipv4="vless://${NODE_UUID}@${SERVER_IP}:${PORT}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${SNI}&fp=chrome&pbk=${REALITY_PUBLIC}&sid=${SHORT_ID}&type=tcp#Reality-${SERVER_IP}"
-    add_link "$link_ipv4" "Reality" "$EXTRA_INFO" "${SERVER_IP}" "${PORT}" "${SNI}"
-    LINK="$link_ipv4"  # 默认链接
-    
-    # 添加到新链接显示
-    CURRENT_NEW_LINKS="${CURRENT_NEW_LINKS}[Reality] ${SERVER_IP}:${PORT} (SNI: ${SNI})\n${link_ipv4}\n----------------------------------------\n\n"
-    
-    # IPv6 链接（如果有）
-    if [[ -n "${SERVER_IPV6}" ]]; then
-        local link_ipv6="vless://${NODE_UUID}@[${SERVER_IPV6}]:${PORT}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${SNI}&fp=chrome&pbk=${REALITY_PUBLIC}&sid=${SHORT_ID}&type=tcp#Reality-[${SERVER_IPV6}]"
-        add_link "$link_ipv6" "Reality" "$EXTRA_INFO" "[${SERVER_IPV6}]" "${PORT}" "${SNI}"
-        CURRENT_NEW_LINKS="${CURRENT_NEW_LINKS}[Reality] [${SERVER_IPV6}]:${PORT} (SNI: ${SNI})\n${link_ipv6}\n----------------------------------------\n\n"
-    fi
+
+    local link_template="vless://${NODE_UUID}@__IP__:${PORT}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${SNI}&fp=chrome&pbk=${REALITY_PUBLIC}&sid=${SHORT_ID}&type=tcp#Reality-__IP__"
+    add_node_links "Reality" "$link_template" "$EXTRA_INFO" "${SNI}"
     
     INBOUND_TAGS+=("vless-in-${PORT}")
     INBOUND_PORTS+=("${PORT}")
@@ -1893,84 +1776,7 @@ setup_shadowtls() {
     
     # 生成 IPv4 客户端配置文件
     local client_config_file_ipv4="${LINK_DIR}/shadowtls_client_${PORT}_ipv4.json"
-    cat > "${client_config_file_ipv4}" << EOFCLIENT
-{
-  "log": {
-    "level": "info"
-  },
-  "dns": {
-    "servers": [
-      {
-        "tag": "google",
-        "type": "udp",
-        "server": "8.8.8.8"
-      }
-    ]
-  },
-  "inbounds": [
-    {
-      "type": "mixed",
-      "tag": "mixed-in",
-      "listen": "127.0.0.1",
-      "listen_port": 1080,
-      "sniff": true,
-      "set_system_proxy": false
-    }
-  ],
-  "outbounds": [
-    {
-      "type": "selector",
-      "tag": "proxy",
-      "outbounds": ["ShadowTLS-${PORT}"],
-      "default": "ShadowTLS-${PORT}"
-    },
-    {
-      "type": "shadowsocks",
-      "tag": "ShadowTLS-${PORT}",
-      "method": "2022-blake3-aes-128-gcm",
-      "password": "${NODE_SS_PASSWORD}",
-      "detour": "shadowtls-out-${PORT}"
-    },
-    {
-      "type": "shadowtls",
-      "tag": "shadowtls-out-${PORT}",
-      "server": "${SERVER_IP}",
-      "server_port": ${PORT},
-      "version": 3,
-      "password": "${NODE_SHADOWTLS_PASSWORD}",
-      "tls": {
-        "enabled": true,
-        "server_name": "${SHADOWTLS_SNI}",
-        "utls": {
-          "enabled": true,
-          "fingerprint": "chrome"
-        }
-      }
-    },
-    {
-      "type": "direct",
-      "tag": "direct"
-    },
-    {
-      "type": "block",
-      "tag": "block"
-    }
-  ],
-  "route": {
-    "rules": [
-      {
-        "geosite": "cn",
-        "outbound": "direct"
-      },
-      {
-        "geoip": "cn",
-        "outbound": "direct"
-      }
-    ],
-    "final": "proxy"
-  }
-}
-EOFCLIENT
+    generate_shadowtls_client_config "${SERVER_IP}" "${PORT}" "${NODE_SS_PASSWORD}" "${NODE_SHADOWTLS_PASSWORD}" "${SHADOWTLS_SNI}" > "${client_config_file_ipv4}"
     
     # IPv6 链接（如果有）
     if [[ -n "${SERVER_IPV6}" ]]; then
@@ -1982,84 +1788,7 @@ EOFCLIENT
         
         # 生成 IPv6 客户端配置文件
         local client_config_file_ipv6="${LINK_DIR}/shadowtls_client_${PORT}_ipv6.json"
-        cat > "${client_config_file_ipv6}" << EOFCLIENT
-{
-  "log": {
-    "level": "info"
-  },
-  "dns": {
-    "servers": [
-      {
-        "tag": "google",
-        "type": "udp",
-        "server": "8.8.8.8"
-      }
-    ]
-  },
-  "inbounds": [
-    {
-      "type": "mixed",
-      "tag": "mixed-in",
-      "listen": "127.0.0.1",
-      "listen_port": 1080,
-      "sniff": true,
-      "set_system_proxy": false
-    }
-  ],
-  "outbounds": [
-    {
-      "type": "selector",
-      "tag": "proxy",
-      "outbounds": ["ShadowTLS-${PORT}"],
-      "default": "ShadowTLS-${PORT}"
-    },
-    {
-      "type": "shadowsocks",
-      "tag": "ShadowTLS-${PORT}",
-      "method": "2022-blake3-aes-128-gcm",
-      "password": "${NODE_SS_PASSWORD}",
-      "detour": "shadowtls-out-${PORT}"
-    },
-    {
-      "type": "shadowtls",
-      "tag": "shadowtls-out-${PORT}",
-      "server": "${SERVER_IPV6}",
-      "server_port": ${PORT},
-      "version": 3,
-      "password": "${NODE_SHADOWTLS_PASSWORD}",
-      "tls": {
-        "enabled": true,
-        "server_name": "${SHADOWTLS_SNI}",
-        "utls": {
-          "enabled": true,
-          "fingerprint": "chrome"
-        }
-      }
-    },
-    {
-      "type": "direct",
-      "tag": "direct"
-    },
-    {
-      "type": "block",
-      "tag": "block"
-    }
-  ],
-  "route": {
-    "rules": [
-      {
-        "geosite": "cn",
-        "outbound": "direct"
-      },
-      {
-        "geoip": "cn",
-        "outbound": "direct"
-      }
-    ],
-    "final": "proxy"
-  }
-}
-EOFCLIENT
+        generate_shadowtls_client_config "${SERVER_IPV6}" "${PORT}" "${NODE_SS_PASSWORD}" "${NODE_SHADOWTLS_PASSWORD}" "${SHADOWTLS_SNI}" > "${client_config_file_ipv6}"
     fi
     
     INBOUND_TAGS+=("shadowtls-in-${PORT}")
@@ -2122,24 +1851,9 @@ setup_https() {
     
     PROTO="HTTPS"
     EXTRA_INFO="UUID: ${NODE_UUID}\n证书: 自签证书(${HTTPS_SNI})\nSNI: ${HTTPS_SNI}"
-    
-    # 保存新添加节点的链接（只用于显示）
-    CURRENT_NEW_LINKS=""
-    
-    # IPv4 链接
-    local link_ipv4="vless://${NODE_UUID}@${SERVER_IP}:${PORT}?encryption=none&security=tls&sni=${HTTPS_SNI}&type=tcp&allowInsecure=1#HTTPS-${SERVER_IP}"
-    add_link "$link_ipv4" "HTTPS" "$EXTRA_INFO" "${SERVER_IP}" "${PORT}" "${HTTPS_SNI}"
-    LINK="$link_ipv4"  # 默认链接
-    
-    # 添加到新链接显示
-    CURRENT_NEW_LINKS="${CURRENT_NEW_LINKS}[HTTPS] ${SERVER_IP}:${PORT} (SNI: ${HTTPS_SNI})\n${link_ipv4}\n----------------------------------------\n\n"
-    
-    # IPv6 链接（如果有）
-    if [[ -n "${SERVER_IPV6}" ]]; then
-        local link_ipv6="vless://${NODE_UUID}@[${SERVER_IPV6}]:${PORT}?encryption=none&security=tls&sni=${HTTPS_SNI}&type=tcp&allowInsecure=1#HTTPS-[${SERVER_IPV6}]"
-        add_link "$link_ipv6" "HTTPS" "$EXTRA_INFO" "[${SERVER_IPV6}]" "${PORT}" "${HTTPS_SNI}"
-        CURRENT_NEW_LINKS="${CURRENT_NEW_LINKS}[HTTPS] [${SERVER_IPV6}]:${PORT} (SNI: ${HTTPS_SNI})\n${link_ipv6}\n----------------------------------------\n\n"
-    fi
+
+    local link_template="vless://${NODE_UUID}@__IP__:${PORT}?encryption=none&security=tls&sni=${HTTPS_SNI}&type=tcp&allowInsecure=1#HTTPS-__IP__"
+    add_node_links "HTTPS" "$link_template" "$EXTRA_INFO" "${HTTPS_SNI}"
     
     INBOUND_TAGS+=("vless-tls-in-${PORT}")
     INBOUND_PORTS+=("${PORT}")
@@ -2904,9 +2618,7 @@ setup_relay() {
     
     while true; do
         echo ""
-        echo -e "${CYAN}╔═══════════════════════════════════════════════════════╗${NC}"
-        echo -e "${CYAN}║              ${GREEN}中转配置菜单${CYAN}                  ║${NC}"
-        echo -e "${CYAN}╚═══════════════════════════════════════════════════════╝${NC}"
+        menu_header "中转配置菜单"
         echo ""
         
         # 显示当前中转列表
@@ -2934,9 +2646,7 @@ setup_relay() {
         case $r_choice in
             1)
                 echo ""
-                echo -e "${CYAN}╔═══════════════════════════════════════════════════════╗${NC}"
-                echo -e "${CYAN}║          ${GREEN}支持的中转协议格式${CYAN}              ║${NC}"
-                echo -e "${CYAN}╚═══════════════════════════════════════════════════════╝${NC}"
+                menu_header "支持的中转协议格式"
                 echo ""
                 echo -e "${GREEN}1. SOCKS5 代理${NC}"
                 echo -e "   ${YELLOW}格式:${NC} socks5://[用户名:密码@]服务器:端口"
@@ -3107,9 +2817,7 @@ setup_relay() {
                     continue
                 elif [[ "$del_idx" == "0" ]]; then
                     echo ""
-                    local confirm
-                    read -p "确认删除全部中转? (y/N): " confirm
-                    if [[ "$confirm" =~ ^[Yy]$ ]]; then
+                    if confirm "确认删除全部中转"; then
                         RELAY_TAGS=()
                         RELAY_JSONS=()
                         RELAY_DESCS=()
@@ -3137,9 +2845,7 @@ setup_relay() {
                     local del_desc="${RELAY_DESCS[$d]}"
                     
                     echo ""
-                    local confirm
-                    read -p "确认删除中转: ${del_desc}? (y/N): " confirm
-                    if [[ "$confirm" =~ ^[Yy]$ ]]; then
+                    if confirm "确认删除中转: ${del_desc}"; then
                         # 删除中转
                         unset RELAY_TAGS[$d]
                         unset RELAY_JSONS[$d]
@@ -3305,9 +3011,7 @@ setup_relay() {
 ip_config_menu() {
     while true; do
         clear
-        echo -e "${CYAN}╔═══════════════════════════════════════════════════════╗${NC}"
-        echo -e "${CYAN}║              ${GREEN}出入站 IP 配置${CYAN}                ║${NC}"
-        echo -e "${CYAN}╚═══════════════════════════════════════════════════════╝${NC}"
+        menu_header "出入站 IP 配置"
         echo ""
         echo -e "${YELLOW}当前配置:${NC}"
         echo -e "  IPv4 地址: ${GREEN}${SERVER_IP}${NC}"
@@ -3346,7 +3050,7 @@ ip_config_menu() {
             2)
                 if [[ -z "$SERVER_IPV6" ]]; then
                     print_error "未检测到 IPv6 地址，请先手动设置"
-                    read -p "按回车继续..." _
+                    pause
                     continue
                 fi
                 INBOUND_IP_MODE="ipv6"
@@ -3382,7 +3086,7 @@ ip_config_menu() {
             5)
                 if [[ -z "$SERVER_IPV6" ]]; then
                     print_error "未检测到 IPv6 地址，请先手动设置"
-                    read -p "按回车继续..." _
+                    pause
                     continue
                 fi
                 OUTBOUND_IP_MODE="ipv6"
@@ -3398,7 +3102,7 @@ ip_config_menu() {
             6)
                 if [[ -z "$SERVER_IPV6" ]]; then
                     print_error "未检测到 IPv6 地址，请先手动设置"
-                    read -p "按回车继续..." _
+                    pause
                     continue
                 fi
                 OUTBOUND_IP_MODE="ipv6_only"
@@ -3448,7 +3152,7 @@ ip_config_menu() {
                 ;;
         esac
         
-        [[ "$ip_choice" != "0" ]] && read -p "按回车继续..." _
+        [[ "$ip_choice" != "0" ]] && pause
     done
 }
 
@@ -4065,12 +3769,8 @@ delete_single_node() {
     echo -e "  SNI: ${sni}"
     echo -e "  TAG: ${tag}"
     echo ""
-    
-    local confirm_delete
-    read -p "确认删除? (y/N): " confirm_delete
-    confirm_delete=${confirm_delete:-N}
-    
-    if [[ ! "$confirm_delete" =~ ^[Yy]$ ]]; then
+
+    if ! confirm "确认删除"; then
         print_info "取消删除操作"
         return 0
     fi
@@ -4152,10 +3852,11 @@ delete_all_nodes() {
     echo -e "  2. 配置文件将只保留基础结构"
     echo -e "  3. 需要重新添加节点"
     echo ""
-    
+
+    # 删除所有节点需要输入 YES 确认，不能用普通 confirm
     local confirm_delete
     read -p "确认删除所有节点? (输入 'YES' 确认): " confirm_delete
-    
+
     if [[ "$confirm_delete" != "YES" ]]; then
         print_info "取消删除操作"
         return 0
@@ -4611,9 +4312,7 @@ show_menu() {
 # ==================== 主菜单 ====================
 show_main_menu() {
     show_banner
-    echo -e "${CYAN}╔═══════════════════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║          ${GREEN}Sing-Box 一键管理面板${CYAN}          ║${NC}"
-    echo -e "${CYAN}╚═══════════════════════════════════════════════════════╝${NC}"
+    menu_header "Sing-Box 一键管理面板"
     echo ""
     
     # 显示出入站配置
@@ -4797,9 +4496,7 @@ modify_node_menu() {
 config_and_view_menu() {
     while true; do
         show_banner
-        echo -e "${CYAN}╔═══════════════════════════════════════════════════════╗${NC}"
-        echo -e "${CYAN}║              ${GREEN}配置 / 查看节点菜单${CYAN}        ║${NC}"
-        echo -e "${CYAN}╚═══════════════════════════════════════════════════════╝${NC}"
+        menu_header "配置 / 查看节点菜单"
         echo ""
         echo -e "  ${GREEN}[1]${NC} 重新加载配置并启动服务"
         echo ""
@@ -4841,9 +4538,7 @@ config_and_view_menu() {
                 ;;
             2)
                 clear
-                echo -e "${CYAN}╔═══════════════════════════════════════════════════════╗${NC}"
-                echo -e "${CYAN}║              ${GREEN}全部节点链接${CYAN}                        ║${NC}"
-                echo -e "${CYAN}╚═══════════════════════════════════════════════════════╝${NC}"
+                menu_header "全部节点链接"
                 echo ""
                 local _has_any=0
                 if [[ -n "$REALITY_LINKS" ]]; then
@@ -4888,81 +4583,25 @@ config_and_view_menu() {
                     echo -e "${YELLOW}(暂无节点)${NC}"
                 fi
                 echo ""
-                read -p "按回车返回..." _
+                pause
                 ;;
             3)
-                clear
-                echo -e "${CYAN}Reality 节点:${NC}"
-                echo ""
-                if [[ -z "$REALITY_LINKS" ]]; then
-                    echo "(暂无 Reality 节点)"
-                else
-                    echo -e "$REALITY_LINKS"
-                fi
-                echo ""
-                read -p "按回车返回..." _
+                show_protocol_links "Reality 节点" "$REALITY_LINKS" "(暂无 Reality 节点)"
                 ;;
             4)
-                clear
-                echo -e "${PURPLE}Hysteria2 节点:${NC}"
-                echo ""
-                if [[ -z "$HYSTERIA2_LINKS" ]]; then
-                    echo "(暂无 Hysteria2 节点)"
-                else
-                    echo -e "$HYSTERIA2_LINKS"
-                fi
-                echo ""
-                read -p "按回车返回..." _
+                show_protocol_links "Hysteria2 节点" "$HYSTERIA2_LINKS" "(暂无 Hysteria2 节点)"
                 ;;
             5)
-                clear
-                echo -e "${YELLOW}SOCKS5 节点:${NC}"
-                echo ""
-                if [[ -z "$SOCKS5_LINKS" ]]; then
-                    echo "(暂无 SOCKS5 节点)"
-                else
-                    echo -e "$SOCKS5_LINKS"
-                fi
-                echo ""
-                read -p "按回车返回..." _
+                show_protocol_links "SOCKS5 节点" "$SOCKS5_LINKS" "(暂无 SOCKS5 节点)"
                 ;;
             6)
-                clear
-                echo -e "${BLUE}ShadowTLS 节点:${NC}"
-                echo ""
-                if [[ -z "$SHADOWTLS_LINKS" ]]; then
-                    echo "(暂无 ShadowTLS 节点)"
-                else
-                    echo -e "$SHADOWTLS_LINKS"
-                    echo ""
-                    echo -e "${CYAN}提示: 可直接复制上方 ss:// 链接导入客户端 (Shadowrocket/NekoBox/v2rayN)${NC}"
-                fi
-                echo ""
-                read -p "按回车返回..." _
+                show_protocol_links "ShadowTLS 节点" "$SHADOWTLS_LINKS" "(暂无 ShadowTLS 节点)" "提示: 可直接复制上方 ss:// 链接导入客户端 (Shadowrocket/NekoBox/v2rayN)"
                 ;;
             7)
-                clear
-                echo -e "${GREEN}HTTPS 节点:${NC}"
-                echo ""
-                if [[ -z "$HTTPS_LINKS" ]]; then
-                    echo "(暂无 HTTPS 节点)"
-                else
-                    echo -e "$HTTPS_LINKS"
-                fi
-                echo ""
-                read -p "按回车返回..." _
+                show_protocol_links "HTTPS 节点" "$HTTPS_LINKS" "(暂无 HTTPS 节点)"
                 ;;
             8)
-                clear
-                echo -e "${RED}AnyTLS 节点:${NC}"
-                echo ""
-                if [[ -z "$ANYTLS_LINKS" ]]; then
-                    echo "(暂无 AnyTLS 节点)"
-                else
-                    echo -e "$ANYTLS_LINKS"
-                fi
-                echo ""
-                read -p "按回车返回..." _
+                show_protocol_links "AnyTLS 节点" "$ANYTLS_LINKS" "(暂无 AnyTLS 节点)"
                 ;;
             9)
                 modify_node_menu
@@ -4995,12 +4634,8 @@ delete_self() {
     echo -e "  2. '删除全部节点'只会清空配置，保留服务和脚本"
     echo -e "  3. 此操作会完全卸载 sing-box 和脚本"
     echo ""
-    
-    local CONFIRM_DELETE
-    read -p "确认完全卸载？(y/N): " CONFIRM_DELETE
-    CONFIRM_DELETE=${CONFIRM_DELETE:-N}
-    
-    if [[ ! "$CONFIRM_DELETE" =~ ^[Yy]$ ]]; then
+
+    if ! confirm "确认完全卸载"; then
         print_info "已取消卸载操作"
         return 0
     fi
@@ -5113,9 +4748,7 @@ domain_route_menu() {
         load_relays_from_file
         
         show_banner
-        echo -e "${CYAN}╔═══════════════════════════════════════════════════════╗${NC}"
-        echo -e "${CYAN}║              ${GREEN}域名分流配置菜单${CYAN}              ║${NC}"
-        echo -e "${CYAN}╚═══════════════════════════════════════════════════════╝${NC}"
+        menu_header "域名分流配置菜单"
         echo ""
         
         # 显示当前的分流规则（按入站节点分组）
@@ -5233,9 +4866,7 @@ domain_route_menu() {
             3)
                 echo ""
                 echo -e "${YELLOW}此操作将删除所有分流规则！${NC}"
-                local confirm
-                read -p "确认清空？(y/N): " confirm
-                if [[ "$confirm" =~ ^[Yy]$ ]]; then
+                if confirm "确认清空"; then
                     DOMAIN_ROUTES=()
                     save_domain_routes_to_file
                     print_success "已清空所有分流规则"
@@ -5253,7 +4884,7 @@ domain_route_menu() {
                 ;;
         esac
         echo ""
-        read -p "按回车继续..." _
+        pause
     done
 }
 
@@ -5395,9 +5026,7 @@ add_domain_route() {
     # 重新生成配置
     if [[ -n "$INBOUNDS_JSON" ]]; then
         echo ""
-        local confirm
-        read -p "是否立即重新生成配置并生效？(y/N): " confirm
-        if [[ "$confirm" =~ ^[Yy]$ ]]; then
+        if confirm "是否立即重新生成配置并生效"; then
             generate_config && start_svc
         fi
     fi
@@ -5541,9 +5170,7 @@ $orig_idx|$route"
     # 重新生成配置
     if [[ -n "$INBOUNDS_JSON" ]]; then
         echo ""
-        local confirm
-        read -p "是否立即重新生成配置并生效？(y/N): " confirm
-        if [[ "$confirm" =~ ^[Yy]$ ]]; then
+        if confirm "是否立即重新生成配置并生效"; then
             generate_config && start_svc
         fi
     fi
