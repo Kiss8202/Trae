@@ -288,12 +288,30 @@ EOF
 install_singbox() {
     print_info "检查 sing-box 安装状态（支持断点续装）..."
 
-    # ---------- 1. 安装系统依赖（检查 jq 即可代表基础工具） ----------
+    # ---------- 1. 安装系统依赖 ----------
+    # Alpine 必须确保 glibc 兼容层已安装（sing-box 是 glibc 二进制）
+    if [[ $ALPINE -eq 1 ]]; then
+        _alpine_compat_missing=0
+        for pkg in gcompat libexecinfo; do
+            if ! apk info -e "$pkg" >/dev/null 2>&1; then
+                _alpine_compat_missing=1
+                break
+            fi
+        done
+        if [[ $_alpine_compat_missing -eq 1 ]]; then
+            print_info "安装 Alpine glibc 兼容层 (gcompat libexecinfo) ..."
+            for pkg in gcompat libexecinfo; do
+                apk add --no-cache "$pkg" >/dev/null 2>&1
+            done
+        fi
+        unset _alpine_compat_missing
+    fi
+
     if ! command -v jq &>/dev/null; then
         print_info "缺少基础依赖，开始安装..."
         if [[ $ALPINE -eq 1 ]]; then
             # Alpine 低内存：逐个安装
-            for pkg in curl wget jq openssl util-linux coreutils gcompat libexecinfo; do
+            for pkg in curl wget jq openssl util-linux coreutils; do
                 apk add --no-cache "$pkg" >/dev/null 2>&1
                 sleep 0.5
             done
@@ -314,8 +332,23 @@ install_singbox() {
             print_success "sing-box 已安装且可执行 (版本: ${version})"
             need_download=0
         else
-            print_warning "检测到损坏的 sing-box，将重新下载安装"
-            rm -f "${INSTALL_DIR}/sing-box"
+            # Alpine 上 sing-box 无法执行通常是缺少 glibc 兼容层
+            if [[ $ALPINE -eq 1 ]]; then
+                print_warning "sing-box 无法执行，尝试修复 glibc 兼容层 ..."
+                apk add --no-cache gcompat libexecinfo >/dev/null 2>&1
+                # 修复后重试
+                if ${INSTALL_DIR}/sing-box version >/dev/null 2>&1; then
+                    local version=$(${INSTALL_DIR}/sing-box version 2>&1 | grep -oP 'sing-box version \K[0-9.]+' || echo "unknown")
+                    print_success "兼容层修复成功，sing-box 可执行 (版本: ${version})"
+                    need_download=0
+                else
+                    print_warning "兼容层修复后仍无法执行，将重新下载安装"
+                    rm -f "${INSTALL_DIR}/sing-box"
+                fi
+            else
+                print_warning "检测到损坏的 sing-box，将重新下载安装"
+                rm -f "${INSTALL_DIR}/sing-box"
+            fi
         fi
     fi
 
@@ -358,6 +391,24 @@ install_singbox() {
         if [[ -f "/tmp/sing-box-${LATEST}-linux-${ARCH}/sing-box" ]]; then
             install -Dm755 "/tmp/sing-box-${LATEST}-linux-${ARCH}/sing-box" "${INSTALL_DIR}/sing-box"
             rm -rf "/tmp/sing-box-${LATEST}-linux-${ARCH}"
+
+            # 验证二进制是否可执行（Alpine 可能缺少 glibc 兼容层）
+            if ! ${INSTALL_DIR}/sing-box version >/dev/null 2>&1; then
+                if [[ $ALPINE -eq 1 ]]; then
+                    print_warning "sing-box 无法执行，安装 glibc 兼容层 ..."
+                    apk add --no-cache gcompat libexecinfo >/dev/null 2>&1
+                    if ${INSTALL_DIR}/sing-box version >/dev/null 2>&1; then
+                        print_success "兼容层安装成功，sing-box 可执行"
+                    else
+                        print_error "glibc 兼容层安装后 sing-box 仍无法执行，请检查系统架构"
+                        return 1
+                    fi
+                else
+                    print_error "sing-box 二进制无法执行，可能架构不匹配"
+                    return 1
+                fi
+            fi
+
             print_success "sing-box 二进制安装完成"
         else
             print_error "解压后未找到 sing-box 二进制，请检查"
@@ -474,6 +525,11 @@ gen_keys() {
     KEYS=$(${INSTALL_DIR}/sing-box generate reality-keypair 2>/dev/null)
     REALITY_PRIVATE=$(echo "$KEYS" | grep "PrivateKey" | awk '{print $2}')
     REALITY_PUBLIC=$(echo "$KEYS" | grep "PublicKey" | awk '{print $2}')
+
+    if [[ -z "$REALITY_PRIVATE" || -z "$REALITY_PUBLIC" ]]; then
+        print_error "Reality 密钥生成失败（sing-box 可能无法执行），请检查 glibc 兼容层"
+        return 1
+    fi
     
     SHORT_ID=$(openssl rand -hex 8)
     print_info "Reality Short ID 已自动生成: ${SHORT_ID}"
