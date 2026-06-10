@@ -43,7 +43,10 @@ curl_with_retry() {
     local url=$1 output=$2
     local max_retries=3 retry=0
     while [ $retry -lt $max_retries ]; do
-        if curl -fsL --connect-timeout 15 --max-time 120 "$url" -o "$output"; then
+        # 使用 -sL 而非 -fsL，避免 HTTP 302/404 等状态码导致静默失败
+        curl -sL --connect-timeout 15 --max-time 120 "$url" -o "$output" 2>/dev/null
+        # 检查文件是否下载成功（非空且存在）
+        if [ -s "$output" ]; then
             return 0
         fi
         retry=$((retry + 1))
@@ -169,7 +172,7 @@ download_core() {
             echo "xray 已存在，跳过下载"
             return
         fi
-        local latest_tag=$(curl -fsL --connect-timeout 10 --max-time 30 https://api.github.com/repos/XTLS/Xray-core/releases/latest | grep '"tag_name"' | sed 's/.*: "\(.*\)".*/\1/' | tr -d ',')
+        local latest_tag=$(curl -sL --connect-timeout 10 --max-time 30 https://api.github.com/repos/XTLS/Xray-core/releases/latest | grep '"tag_name"' | sed 's/.*: "\(.*\)".*/\1/' | tr -d ',')
         if [ -z "$latest_tag" ]; then
             echo "无法获取 xray 最新版本，请检查网络"
             exit 1
@@ -193,7 +196,7 @@ download_core() {
             echo "sing-box 已存在，跳过下载"
             return
         fi
-        local latest_tag=$(curl -fsL --connect-timeout 10 --max-time 30 https://api.github.com/repos/SagerNet/sing-box/releases/latest | grep '"tag_name"' | sed 's/.*: "\(.*\)".*/\1/' | tr -d ',')
+        local latest_tag=$(curl -sL --connect-timeout 10 --max-time 30 https://api.github.com/repos/SagerNet/sing-box/releases/latest | grep '"tag_name"' | sed 's/.*: "\(.*\)".*/\1/' | tr -d ',')
         if [ -z "$latest_tag" ]; then
             echo "无法获取 sing-box 最新版本，请检查网络"
             exit 1
@@ -694,7 +697,7 @@ while true; do
             continue
         fi
 
-        isp=$(curl -$ips -fsL --connect-timeout 10 --max-time 15 https://speed.cloudflare.com/meta | awk -F\" '{print $26"-"$18"-"$30}' | sed 's/ /_/g')
+        isp=$(curl -$ips -sL --connect-timeout 10 --max-time 15 https://speed.cloudflare.com/meta | awk -F\" '{print $26"-"$18"-"$30}' | sed 's/ /_/g')
     fi
 
     case $mode in
