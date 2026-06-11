@@ -2079,26 +2079,6 @@ EOF
     fi
     save_links_to_files
 }
-# ==================== 服务器地址解析（兼容 IPv6） ====================
-# 用法: parse_server_port <server:port字符串>
-# 输出: 两行 —— 第一行 server，第二行 port
-# 支持: 1.2.3.4:443 / [2a0f:1cc6:b120::12]:443 / example.com:443
-parse_server_port() {
-    local input="$1"
-    # 清理尾部 / # 等杂质
-    input="${input%%/*}"
-    input="${input%%#*}"
-    if [[ "$input" =~ ^\[([^\]]+)\]:([0-9]+) ]]; then
-        # IPv6 格式: [addr]:port
-        echo "${BASH_REMATCH[1]}"
-        echo "${BASH_REMATCH[2]}"
-    else
-        # IPv4 / 域名格式: addr:port
-        echo "${input%:*}"
-        echo "${input##*:}"
-    fi
-}
-
 # ==================== 中转链接解析 ====================
 parse_socks_link() {
     local link="$1"
@@ -2128,9 +2108,8 @@ parse_socks_link() {
         local username=$(echo "$userpass" | cut -d':' -f1)
         local password=$(echo "$userpass" | cut -d':' -f2-)
         local server_port=$(echo "$data" | cut -d'@' -f2)
-        local _sp=($(parse_server_port "$server_port"))
-        local server="${_sp[0]}"
-        local port="${_sp[1]}"
+        local server=$(echo "$server_port" | cut -d':' -f1)
+        local port=$(echo "$server_port" | cut -d':' -f2)
         
         if ! [[ "$port" =~ ^[0-9]+$ ]]; then
             print_error "端口无效: ${port}"
@@ -2153,9 +2132,8 @@ parse_socks_link() {
             relay_desc="SOCKS5 ${server}:${port} (认证)"
         fi
     else
-        local _sp=($(parse_server_port "$data"))
-        local server="${_sp[0]}"
-        local port="${_sp[1]}"
+        local server=$(echo "$data" | cut -d':' -f1)
+        local port=$(echo "$data" | cut -d':' -f2)
         
         if ! [[ "$port" =~ ^[0-9]+$ ]]; then
             print_error "端口无效: ${port}"
@@ -2202,10 +2180,9 @@ parse_http_link() {
         local userpass=$(echo "$data" | cut -d'@' -f1)
         local username=$(echo "$userpass" | cut -d':' -f1)
         local password=$(echo "$userpass" | cut -d':' -f2)
-        local server_port=$(echo "$data" | cut -d'@' -f2 | cut -d'/' -f1 | cut -d'#' -f1 | cut -d'?' -f1)
-        local _sp=($(parse_server_port "$server_port"))
-        local server="${_sp[0]}"
-        local port="${_sp[1]}"
+        local server_port=$(echo "$data" | cut -d'@' -f2)
+        local server=$(echo "$server_port" | cut -d':' -f1)
+        local port=$(echo "$server_port" | cut -d':' -f2 | cut -d'/' -f1 | cut -d'#' -f1 | cut -d'?' -f1)
         
         relay_json="{
   \"type\": \"http\",
@@ -2222,10 +2199,8 @@ parse_http_link() {
             relay_desc="${protocol^^} ${server}:${port} (认证)"
         fi
     else
-        local server_port=$(echo "$data" | cut -d'/' -f1 | cut -d'#' -f1 | cut -d'?' -f1)
-        local _sp=($(parse_server_port "$server_port"))
-        local server="${_sp[0]}"
-        local port="${_sp[1]}"
+        local server=$(echo "$data" | cut -d':' -f1)
+        local port=$(echo "$data" | cut -d':' -f2 | cut -d'/' -f1 | cut -d'#' -f1 | cut -d'?' -f1)
         
         relay_json="{
   \"type\": \"http\",
@@ -2257,9 +2232,8 @@ parse_ss_link() {
     if [[ "$data" =~ @ ]]; then
         local userinfo=$(echo "$data" | cut -d'@' -f1)
         local server_port=$(echo "$data" | cut -d'@' -f2 | cut -d'?' -f1)
-        local _sp=($(parse_server_port "$server_port"))
-        local server="${_sp[0]}"
-        local port="${_sp[1]}"
+        local server=$(echo "$server_port" | cut -d':' -f1)
+        local port=$(echo "$server_port" | cut -d':' -f2)
         
         local decoded=$(echo "$userinfo" | base64 -d 2>/dev/null)
         if [[ -z "$decoded" ]]; then
@@ -2351,10 +2325,10 @@ parse_vless_link() {
     local data=$(echo "$link" | sed 's|vless://||')
     local uuid=$(echo "$data" | cut -d'@' -f1)
     local server_port_params=$(echo "$data" | cut -d'@' -f2)
-    local server_port_part=$(echo "$server_port_params" | cut -d'?' -f1 | cut -d'#' -f1)
-    local _sp=($(parse_server_port "$server_port_part"))
-    local server="${_sp[0]}"
-    local port="${_sp[1]}"
+    local server=$(echo "$server_port_params" | cut -d':' -f1)
+    local port_params=$(echo "$server_port_params" | cut -d':' -f2)
+    # 清理端口：去掉 ? 及之后，再去掉 / 及之后
+    local port=$(echo "$port_params" | cut -d'?' -f1 | sed 's|/.*||')
     if ! [[ "$port" =~ ^[0-9]+$ ]]; then
         print_error "端口无效: ${port}"
         return 1
@@ -2454,12 +2428,11 @@ parse_trojan_link() {
     local data=$(echo "$link" | sed 's|trojan://||')
     local password=$(echo "$data" | cut -d'@' -f1)
     local server_port_params=$(echo "$data" | cut -d'@' -f2)
-    local server_port_part=$(echo "$server_port_params" | cut -d'?' -f1 | cut -d'#' -f1)
-    local _sp=($(parse_server_port "$server_port_part"))
-    local server="${_sp[0]}"
-    local port="${_sp[1]}"
-
-    local params=$(echo "$server_port_params" | grep -o '?.*' | sed 's|?||' | cut -d'#' -f1)
+    local server=$(echo "$server_port_params" | cut -d':' -f1)
+    local port_params=$(echo "$server_port_params" | cut -d':' -f2)
+    local port=$(echo "$port_params" | cut -d'?' -f1)
+    
+    local params=$(echo "$port_params" | grep -o '?.*' | sed 's|?||' | cut -d'#' -f1)
     
     local sni=""
     [[ "$params" =~ sni=([^&]+) ]] && sni="${BASH_REMATCH[1]}"
@@ -2513,7 +2486,7 @@ parse_hysteria2_link() {
     # 提取参数部分
     local params=""
     if [[ "$rest" == *"?"* ]]; then
-        params="${rest#*?}"
+        params="${rest#*\?}"
         params="${params%%#*}"  # 去除可能的 # 备注
     fi
 
@@ -2590,10 +2563,9 @@ parse_anytls_link() {
     local data=$(echo "$link" | sed 's|anytls://||')
     local userinfo=$(echo "$data" | cut -d'@' -f1)
     local server_port_params=$(echo "$data" | cut -d'@' -f2)
-    local server_port_part=$(echo "$server_port_params" | cut -d'?' -f1 | cut -d'#' -f1)
-    local _sp=($(parse_server_port "$server_port_part"))
-    local server="${_sp[0]}"
-    local port="${_sp[1]}"
+    local server=$(echo "$server_port_params" | cut -d':' -f1)
+    local port_params=$(echo "$server_port_params" | cut -d':' -f2)
+    local port=$(echo "$port_params" | cut -d'?' -f1 | sed 's|/.*||')
     if ! [[ "$port" =~ ^[0-9]+$ ]]; then
         print_error "端口无效: ${port}"
         return 1
@@ -4156,7 +4128,7 @@ generate_config() {
     print_info "生成最终配置文件..."
 
     if [[ -f "${CONFIG_FILE}" ]]; then
-        local backup_file="${CONFIG_FILE}.bak"
+        local backup_file="${CONFIG_FILE}.bak.$(date +%Y%m%d%H%M%S)"
         cp "${CONFIG_FILE}" "${backup_file}" 2>/dev/null
         print_info "已备份配置到: ${backup_file}"
     fi
