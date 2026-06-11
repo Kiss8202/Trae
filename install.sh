@@ -2085,6 +2085,9 @@ EOF
 # 支持: 1.2.3.4:443 / [2a0f:1cc6:b120::12]:443 / example.com:443
 parse_server_port() {
     local input="$1"
+    # 清理尾部 / # 等杂质
+    input="${input%%/*}"
+    input="${input%%#*}"
     if [[ "$input" =~ ^\[([^\]]+)\]:([0-9]+) ]]; then
         # IPv6 格式: [addr]:port
         echo "${BASH_REMATCH[1]}"
