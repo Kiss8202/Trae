@@ -4156,7 +4156,7 @@ generate_config() {
     print_info "生成最终配置文件..."
 
     if [[ -f "${CONFIG_FILE}" ]]; then
-        local backup_file="${CONFIG_FILE}.bak.$(date +%Y%m%d%H%M%S)"
+        local backup_file="${CONFIG_FILE}.bak"
         cp "${CONFIG_FILE}" "${backup_file}" 2>/dev/null
         print_info "已备份配置到: ${backup_file}"
     fi
