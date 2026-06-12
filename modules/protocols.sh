@@ -582,11 +582,8 @@ setup_anytls() {
         PROTO="AnyTLS+REALITY"
         EXTRA_INFO="密码: ${NODE_ANYTLS_PASSWORD}\nREALITY 公钥: ${REALITY_PUBLIC}\nShort ID: ${SHORT_ID}\nSNI: ${ANYTLS_SNI}"
 
-        # 生成客户端 JSON 配置文件（sing-box 格式），并根据系统选择 TUN 栈
-        local tun_stack="system"
-        if [[ "$OSTYPE" == "darwin"* ]] || [[ "$OSTYPE" == "msys"* ]] || [[ "$OSTYPE" == "cygwin"* ]]; then
-            tun_stack="gvisor"
-        fi
+        # 生成客户端 JSON 配置文件（sing-box 格式）
+        # 注意: TUN stack 默认使用 system，客户端可根据自身系统修改为 gvisor
         CLIENT_JSON_PATH="${LINK_DIR}/anytls_reality_client_${PORT}.json"
         cat > "${CLIENT_JSON_PATH}" << EOF
 {
@@ -598,7 +595,7 @@ setup_anytls() {
       "interface_name": "sing-box0",
       "address": ["172.19.0.1/30", "fd00::1/126"],
       "auto_route": true,
-      "stack": "${tun_stack}"
+      "stack": "system"
     }
   ],
   "outbounds": [
@@ -638,6 +635,7 @@ EOF
         if [[ "$ALLOW_INSECURE" =~ ^[Yy]$ ]]; then
             insecure_bool="true"
         fi
+        # 注意: insecure 是客户端 TLS 字段，服务端入站不需要
         inbound="{
   \"type\": \"anytls\",
   \"tag\": \"anytls-in-${PORT}\",
@@ -654,7 +652,48 @@ EOF
 }"
         PROTO="AnyTLS"
         EXTRA_INFO="密码: ${NODE_ANYTLS_PASSWORD}\n证书: 自签证书 (${ANYTLS_SNI})"
-        # 生成 anytls:// 链接，insecure 根据用户选择
+        # 生成客户端 JSON 配置文件
+        CLIENT_JSON_PATH="${LINK_DIR}/anytls_client_${PORT}.json"
+        cat > "${CLIENT_JSON_PATH}" << EOF
+{
+  "log": { "level": "info" },
+  "inbounds": [
+    {
+      "type": "tun",
+      "tag": "tun-in",
+      "interface_name": "sing-box0",
+      "address": ["172.19.0.1/30", "fd00::1/126"],
+      "auto_route": true,
+      "stack": "system"
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "anytls",
+      "tag": "AnyTLS",
+      "server": "${SERVER_IP}",
+      "server_port": ${PORT},
+      "password": "${NODE_ANYTLS_PASSWORD}",
+      "tls": {
+        "enabled": true,
+        "server_name": "${ANYTLS_SNI}",
+        "insecure": ${insecure_bool},
+        "utls": { "enabled": true, "fingerprint": "${UTLS_FINGERPRINT}" }
+      }
+    },
+    { "type": "direct", "tag": "direct" }
+  ],
+  "route": {
+    "final": "AnyTLS",
+    "auto_detect_interface": true,
+    "rules": [
+      {"action":"sniff","protocols":["http","tls","quic"]}
+    ]
+  }
+}
+EOF
+        chmod 644 "${CLIENT_JSON_PATH}"
+        # 同时生成 anytls:// 链接
         LINK=$(generate_proto_link "anytls" "${SERVER_IP}" "${PORT}" "password=${NODE_ANYTLS_PASSWORD}" "sni=${ANYTLS_SNI}" "fp=${UTLS_FINGERPRINT}" "insecure=${insecure_bool}")
     fi
 
@@ -676,20 +715,17 @@ EOF
     INBOUND_SNIS+=("${ANYTLS_SNI}")
     INBOUND_RELAY_TAGS+=("direct")
 
-    # 显示新添加节点的信息（不再调用 add_link 传入无效链接）
+    # 显示新添加节点的信息
     CURRENT_NEW_LINKS=""
     if [[ "$ENABLE_REALITY" =~ ^[Yy]$ ]]; then
         CURRENT_NEW_LINKS="${CURRENT_NEW_LINKS}[${PROTO}] ${SERVER_IP}:${PORT} (SNI: ${ANYTLS_SNI})\n客户端配置文件: ${CLIENT_JSON_PATH}\n----------------------------------------\n\n"
-        # 不调用 add_link，因为 JSON 不是标准 URI
     else
-        CURRENT_NEW_LINKS="${CURRENT_NEW_LINKS}[${PROTO}] ${SERVER_IP}:${PORT} (SNI: ${ANYTLS_SNI})\n${LINK}\n----------------------------------------\n\n"
+        CURRENT_NEW_LINKS="${CURRENT_NEW_LINKS}[${PROTO}] ${SERVER_IP}:${PORT} (SNI: ${ANYTLS_SNI})\n${LINK}\n客户端配置文件: ${CLIENT_JSON_PATH}\n----------------------------------------\n\n"
         add_link "$LINK" "${PROTO}" "$EXTRA_INFO" "${SERVER_IP}" "${PORT}" "${ANYTLS_SNI}"
     fi
 
     print_success "AnyTLS 节点添加完成 (REALITY: ${ENABLE_REALITY})"
-    if [[ "$ENABLE_REALITY" =~ ^[Yy]$ ]]; then
-        echo -e "${CYAN}客户端配置 JSON 已保存到: ${CLIENT_JSON_PATH}${NC}"
-        echo -e "${CYAN}请使用 sing-box 客户端运行: sing-box run -c ${CLIENT_JSON_PATH}${NC}"
-    fi
+    echo -e "${CYAN}客户端配置 JSON 已保存到: ${CLIENT_JSON_PATH}${NC}"
+    echo -e "${CYAN}请使用 sing-box 客户端运行: sing-box run -c ${CLIENT_JSON_PATH}${NC}"
     save_links_to_files
 }

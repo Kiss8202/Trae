@@ -1067,12 +1067,10 @@ build_outbounds() {
 # 构建路由规则
 build_route_rules() {
     local route_rules=()
-    local has_relay=0
 
     # 添加协议嗅探规则（1.13.0+ 使用 route rule action）
     if [[ $SB_GE_1_13 -eq 1 ]]; then
         route_rules+=('{"action":"sniff","protocols":["http","tls","quic"]}')
-        has_relay=1
     fi
 
     # ipv6_only 模式下，添加规则阻断所有 IPv4 出站流量
@@ -1082,7 +1080,6 @@ build_route_rules() {
         else
             route_rules+=('{"ip_cidr":["0.0.0.0/0"],"outbound":"block-ipv4"}')
         fi
-        has_relay=1
     fi
 
     # 1. 添加所有分流域名规则
@@ -1111,7 +1108,6 @@ build_route_rules() {
         esac
 
         route_rules+=("{\"inbound\":[\"${inbound_tag}\"],${rule_part},\"outbound\":\"${relay_tag}\"}")
-        has_relay=1
     done
 
     # 2. 为每个节点添加默认路由（仅当节点配置了中转且不是 direct）
@@ -1130,14 +1126,13 @@ build_route_rules() {
                 continue
             fi
             route_rules+=("{\"inbound\":[\"${inbound_tag}\"],\"outbound\":\"${relay_tag}\"}")
-            has_relay=1
         fi
     done
 
-    # 组合路由 JSON
+    # 组合路由 JSON（根据 route_rules 是否非空决定是否包含 rules 数组）
     local route_domain_resolver=",\"default_domain_resolver\":\"local\""
     local route_json
-    if [[ $has_relay -eq 1 ]]; then
+    if [[ ${#route_rules[@]} -gt 0 ]]; then
         route_json="{\"rules\":["
         for i in "${!route_rules[@]}"; do
             [[ $i -gt 0 ]] && route_json+=","
@@ -1160,6 +1155,13 @@ build_dns_config() {
     local dns_remote_server
     dns_remote_server=$(build_dns_remote_server)
 
+    # 1.14.0+ 支持 optimistic DNS 缓存，降低 DNS 延迟
+    local dns_optimistic=""
+    if [[ $SB_GE_1_14 -eq 1 ]]; then
+        dns_optimistic=",
+    \"optimistic\": true"
+    fi
+
     local dns_json
     if [[ $SB_GE_1_12 -eq 1 ]]; then
         dns_json="{
@@ -1172,7 +1174,7 @@ build_dns_config() {
     ],
     \"final\": \"remote\",
     \"strategy\": \"${dns_strategy}\",
-    \"default_domain_resolver\": \"local\"
+    \"default_domain_resolver\": \"local\"${dns_optimistic}
   }"
     else
         dns_json="{
@@ -1247,7 +1249,7 @@ start_svc() {
     
     if [[ $check_exit_code -ne 0 ]]; then
         print_error "配置验证失败 (退出码: ${check_exit_code})"
-        echo -e "${YELLOW}错误详情:${NC}"
+        print_warning "错误详情:"
         echo "$check_output"
         echo ""
         # 自动回滚到备份配置
