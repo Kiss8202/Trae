@@ -947,26 +947,36 @@ main_menu() {
 
 setup_sb_shortcut() {
     print_info "创建快捷命令 sb..."
-    
+
     local sb_target="/etc/sing-box/install.sh"
-    
+
     # 确保脚本在标准位置
     if [[ ! -f "${SCRIPT_PATH}" ]]; then
         print_warning "脚本不在磁盘上，跳过创建 sb"
         return
     fi
-    
-    # 如果脚本不在标准位置，复制一份
+
+    # 如果脚本不在标准位置，复制一份到 /etc/sing-box/
     if [[ "${SCRIPT_PATH}" != "${sb_target}" ]]; then
         cp "${SCRIPT_PATH}" "${sb_target}" 2>/dev/null && chmod +x "${sb_target}"
         SCRIPT_PATH="${sb_target}"
     fi
-    
+
+    # 确保模块目录存在且有文件（防止旧版本升级后模块缺失）
+    if [[ ! -d "/etc/sing-box/modules" ]] || [[ -z "$(ls -A /etc/sing-box/modules/ 2>/dev/null)" ]]; then
+        print_info "模块目录缺失，从 GitHub 下载..."
+        mkdir -p /etc/sing-box/modules
+        local modules_url="https://raw.githubusercontent.com/Kiss8202/Trae/main/modules"
+        for module in core install links dns relay protocols config menu; do
+            curl -sfL --connect-timeout 10 --max-time 30 "${modules_url}/${module}.sh" -o "/etc/sing-box/modules/${module}.sh" 2>/dev/null || true
+        done
+    fi
+
     cat > /usr/local/bin/sb << EOSB
 #!/bin/sh
 bash "${SCRIPT_PATH}" "\$@"
 EOSB
-    
+
     chmod +x /usr/local/bin/sb
     print_success "已创建快捷命令: sb (任意位置输入 sb 即可重新进入脚本)"
 }
