@@ -1036,7 +1036,12 @@ main() {
     fi
     
     detect_system
-    install_singbox
+    if ! install_singbox; then
+        print_error "sing-box 安装失败，请检查网络或系统环境后重试"
+        print_info "按回车键退出..."
+        read -r
+        exit 1
+    fi
     detect_singbox_version
     mkdir -p /etc/sing-box
     gen_keys
