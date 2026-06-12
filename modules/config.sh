@@ -803,12 +803,6 @@ delete_all_nodes() {
     [[ "$OUTBOUND_IP_MODE" == "ipv6" ]] && dns_strategy="prefer_ipv6"
     [[ "$OUTBOUND_IP_MODE" == "ipv6_only" ]] && dns_strategy="ipv6_only"
 
-    local dns_domain_resolver=""
-    if [[ $SB_GE_1_12 -eq 1 ]]; then
-        dns_domain_resolver=",
-    \"default_domain_resolver\": \"local\""
-    fi
-
     # 根据用户配置的 DNS 模式生成远程 DNS 服务器配置
     local dns_remote_server
     dns_remote_server=$(build_dns_remote_server)
@@ -828,7 +822,7 @@ delete_all_nodes() {
       ${dns_remote_server}
     ],
     "final": "remote",
-    "strategy": "${dns_strategy}"${dns_domain_resolver}
+    "strategy": "${dns_strategy}"
   },
   "inbounds": [],
   "outbounds": [
@@ -1030,8 +1024,7 @@ build_dns_config() {
       ${dns_remote_server}
     ],
     \"final\": \"remote\",
-    \"strategy\": \"${dns_strategy}\",
-    \"default_domain_resolver\": \"local\"${dns_optimistic}
+    \"strategy\": \"${dns_strategy}\"${dns_optimistic}
   }"
     else
         dns_json="{
