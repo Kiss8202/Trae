@@ -1177,12 +1177,7 @@ generate_config() {
     
     # 组合路由配置
     local route_json
-    local route_domain_resolver=""
-    if [[ $SB_GE_1_12 -eq 1 ]]; then
-        route_domain_resolver=",\"default_domain_resolver\":\"local\""
-    else
-        route_domain_resolver=",\"default_domain_resolver\":\"local\""
-    fi
+    local route_domain_resolver=",\"default_domain_resolver\":\"local\""
     if [[ $has_relay -eq 1 ]]; then
         route_json="{\"rules\":["
         for i in "${!route_rules[@]}"; do

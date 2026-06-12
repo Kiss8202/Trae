@@ -22,7 +22,11 @@ if [ -z "$BASH_VERSION" ]; then
 fi
 
 # ==================== 模块加载 ====================
-SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")")" 2>/dev/null && pwd)"
+# curl|bash 场景下 SCRIPT_DIR 可能是 /dev/fd 等无效路径，使用 /etc/sing-box/modules 作为 fallback
+if [[ -z "$SCRIPT_DIR" || "$SCRIPT_DIR" == /dev/* || ! -d "$SCRIPT_DIR" ]]; then
+    SCRIPT_DIR="/etc/sing-box"
+fi
 MODULES_DIR="${SCRIPT_DIR}/modules"
 MODULES_URL="https://raw.githubusercontent.com/Kiss8202/Trae/main/modules"
 

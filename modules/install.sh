@@ -29,8 +29,22 @@ install_singbox() {
             print_success "sing-box 已安装且可执行 (版本: ${version})"
             need_download=0
         else
-            print_warning "检测到损坏的 sing-box，将重新下载安装"
-            rm -f "${INSTALL_DIR}/sing-box"
+            # Alpine 系统可能缺少 glibc 兼容层导致无法执行
+            if [[ $ALPINE -eq 1 ]]; then
+                print_warning "sing-box 无法执行，尝试安装 glibc 兼容层..."
+                apk add --no-cache gcompat libexecinfo >/dev/null 2>&1
+                if ${INSTALL_DIR}/sing-box version >/dev/null 2>&1; then
+                    local version=$(${INSTALL_DIR}/sing-box version 2>&1 | grep -oP 'sing-box version \K[0-9.]+' || echo "unknown")
+                    print_success "glibc 兼容层安装成功，sing-box 已可执行 (版本: ${version})"
+                    need_download=0
+                else
+                    print_warning "glibc 兼容层安装后仍无法执行，将重新下载安装"
+                    rm -f "${INSTALL_DIR}/sing-box"
+                fi
+            else
+                print_warning "检测到损坏的 sing-box，将重新下载安装"
+                rm -f "${INSTALL_DIR}/sing-box"
+            fi
         fi
     fi
 
@@ -78,7 +92,28 @@ install_singbox() {
         if [[ -f "/tmp/sing-box-${LATEST}-linux-${ARCH}/sing-box" ]]; then
             install -Dm755 "/tmp/sing-box-${LATEST}-linux-${ARCH}/sing-box" "${INSTALL_DIR}/sing-box"
             rm -rf "/tmp/sing-box-${LATEST}-linux-${ARCH}"
-            print_success "sing-box 二进制安装完成"
+
+            # 验证安装后的二进制是否可执行
+            if ${INSTALL_DIR}/sing-box version >/dev/null 2>&1; then
+                local version=$(${INSTALL_DIR}/sing-box version 2>&1 | grep -oP 'sing-box version \K[0-9.]+' || echo "unknown")
+                print_success "sing-box 二进制安装完成 (版本: ${version})"
+            else
+                # Alpine 系统可能缺少 glibc 兼容层
+                if [[ $ALPINE -eq 1 ]]; then
+                    print_warning "sing-box 安装后无法执行，尝试安装 glibc 兼容层..."
+                    apk add --no-cache gcompat libexecinfo >/dev/null 2>&1
+                    if ${INSTALL_DIR}/sing-box version >/dev/null 2>&1; then
+                        local version=$(${INSTALL_DIR}/sing-box version 2>&1 | grep -oP 'sing-box version \K[0-9.]+' || echo "unknown")
+                        print_success "glibc 兼容层安装成功，sing-box 已可执行 (版本: ${version})"
+                    else
+                        print_error "sing-box 安装后无法执行，请检查系统架构或手动安装 glibc 兼容层"
+                        return 1
+                    fi
+                else
+                    print_error "sing-box 安装后无法执行，可能架构不匹配或文件损坏"
+                    return 1
+                fi
+            fi
         else
             print_error "解压后未找到 sing-box 二进制，请检查"
             return 1
@@ -194,7 +229,16 @@ gen_keys() {
     KEYS=$(${INSTALL_DIR}/sing-box generate reality-keypair 2>/dev/null)
     REALITY_PRIVATE=$(echo "$KEYS" | grep "PrivateKey" | awk '{print $2}')
     REALITY_PUBLIC=$(echo "$KEYS" | grep "PublicKey" | awk '{print $2}')
-    
+
+    if [[ -z "$REALITY_PRIVATE" || -z "$REALITY_PUBLIC" ]]; then
+        print_error "Reality 密钥生成失败"
+        if [[ $ALPINE -eq 1 ]]; then
+            print_error "Alpine 系统请检查 glibc 兼容层: apk add gcompat libexecinfo"
+        else
+            print_error "请检查 sing-box 是否正常安装: ${INSTALL_DIR}/sing-box version"
+        fi
+        return 1
+    fi
     SHORT_ID=$(openssl rand -hex 8)
     print_info "Reality Short ID 已自动生成: ${SHORT_ID}"
     print_info "如需修改 Short ID，可在添加节点时自定义"
