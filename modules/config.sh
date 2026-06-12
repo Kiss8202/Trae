@@ -1007,91 +1007,69 @@ EOFCONFIG
         fi
     fi
 }
-# ==================== 配置生成（修复路由逻辑） ====================
-generate_config() {
-    print_info "生成最终配置文件..."
+# ==================== 配置生成子函数 ====================
 
-    if [[ -f "${CONFIG_FILE}" ]]; then
-        local backup_file="${CONFIG_FILE}.bak"
-        cp "${CONFIG_FILE}" "${backup_file}" 2>/dev/null
-        print_info "已备份配置到: ${backup_file}"
-    fi
-
-    if [[ -z "$INBOUNDS_JSON" ]]; then
-        print_error "未找到任何入站节点，请先添加节点"
-        return 1
-    fi
-    
-    # 加载中转配置
-    load_relays_from_file
-    
-    # 构建 outbounds 数组
+# 构建 outbounds 数组
+build_outbounds() {
     local outbounds_array=()
-    
+
     # 添加所有中转 outbound
     for relay_json in "${RELAY_JSONS[@]}"; do
         outbounds_array+=("$relay_json")
     done
-    
+
     # 添加 direct outbound（根据出站模式设置绑定地址和域名解析策略）
-    # sing-box 1.14.0+ 移除了 domain_strategy，需通过 domain_resolver 设置解析策略
     local direct_outbound
     if [[ "$OUTBOUND_IP_MODE" == "ipv6" ]]; then
-        # IPv6优先：绑定IPv6地址 + domain_resolver策略prefer_ipv6，IPv6不可用时回退IPv4
         if [[ -n "${SERVER_IPV6}" ]]; then
             direct_outbound="{\"type\": \"direct\", \"tag\": \"direct\", \"tcp_fast_open\": false, \"inet6_bind_address\": \"${SERVER_IPV6}\", \"fallback_delay\": \"300ms\", \"domain_resolver\": {\"server\": \"remote\", \"strategy\": \"prefer_ipv6\"}}"
         else
             direct_outbound='{"type": "direct", "tag": "direct", "tcp_fast_open": false, "domain_resolver": {"server": "remote", "strategy": "prefer_ipv6"}}'
         fi
     elif [[ "$OUTBOUND_IP_MODE" == "ipv6_only" ]]; then
-        # 仅IPv6：绑定IPv6地址 + domain_resolver策略ipv6_only，配合block规则彻底阻断IPv4
         if [[ -n "${SERVER_IPV6}" ]]; then
             direct_outbound="{\"type\": \"direct\", \"tag\": \"direct\", \"tcp_fast_open\": false, \"inet6_bind_address\": \"${SERVER_IPV6}\", \"domain_resolver\": {\"server\": \"remote\", \"strategy\": \"ipv6_only\"}}"
         else
             direct_outbound='{"type": "direct", "tag": "direct", "tcp_fast_open": false, "domain_resolver": {"server": "remote", "strategy": "ipv6_only"}}'
         fi
     elif [[ "$OUTBOUND_IP_MODE" == "ipv4" ]]; then
-        # 仅IPv4：绑定IPv4地址 + domain_resolver策略ipv4_only
         if [[ -n "${SERVER_IP}" ]]; then
             direct_outbound="{\"type\": \"direct\", \"tag\": \"direct\", \"tcp_fast_open\": false, \"inet4_bind_address\": \"${SERVER_IP}\", \"domain_resolver\": {\"server\": \"remote\", \"strategy\": \"ipv4_only\"}}"
         else
             direct_outbound='{"type": "direct", "tag": "direct", "tcp_fast_open": false, "domain_resolver": {"server": "remote", "strategy": "ipv4_only"}}'
         fi
     else
-        # dual 双栈：不限制绑定地址
         direct_outbound='{"type": "direct", "tag": "direct", "tcp_fast_open": false}'
     fi
     outbounds_array+=("$direct_outbound")
-    
+
     # ipv6_only 模式下阻断 IPv4 出站
-    # 注意: sing-box 1.13.0+ 已移除 block outbound，改用 route rule action
     if [[ "$OUTBOUND_IP_MODE" == "ipv6_only" ]]; then
         if [[ $SB_GE_1_13 -eq 1 ]]; then
-            # 1.13.0+ 不添加 block outbound，在路由规则中用 action 处理
-            :
+            : # 1.13.0+ 不添加 block outbound，在路由规则中用 action 处理
         else
-            # 旧版本使用 block outbound
             local block_outbound='{"type": "block", "tag": "block-ipv4"}'
             outbounds_array+=("$block_outbound")
         fi
     fi
-    
-    # 组合 outbounds
+
+    # 组合 outbounds JSON 数组
     local outbounds="["
     for i in "${!outbounds_array[@]}"; do
         [[ $i -gt 0 ]] && outbounds+=", "
         outbounds+="${outbounds_array[$i]}"
     done
     outbounds+="]"
-    
-    # 加载分流规则
-    load_domain_routes_from_file
-    
-    # 构建路由规则
+
+    echo "$outbounds"
+}
+
+# 构建路由规则
+build_route_rules() {
     local route_rules=()
     local has_relay=0
 
-    # 添加协议嗅探规则（1.13.0+ 使用 route rule action，旧版使用 inbound sniff 字段）
+    # 添加协议嗅探规则（1.13.0+ 使用 route rule action）
     if [[ $SB_GE_1_13 -eq 1 ]]; then
         route_rules+=('{"action":"sniff","protocols":["http","tls","quic"]}')
         has_relay=1
@@ -1100,70 +1078,51 @@ generate_config() {
     # ipv6_only 模式下，添加规则阻断所有 IPv4 出站流量
     if [[ "$OUTBOUND_IP_MODE" == "ipv6_only" ]]; then
         if [[ $SB_GE_1_13 -eq 1 ]]; then
-            # 1.13.0+ 使用 route rule action
             route_rules+=('{"ip_cidr":["0.0.0.0/0"],"action":"block"}')
         else
             route_rules+=('{"ip_cidr":["0.0.0.0/0"],"outbound":"block-ipv4"}')
         fi
         has_relay=1
     fi
-    
-    # 1. 首先添加所有分流域名规则（无论节点默认是中转还是直连）
+
+    # 1. 添加所有分流域名规则
     for route in "${DOMAIN_ROUTES[@]}"; do
         IFS='|' read -r inbound_tag match_type match_value relay_tag desc <<< "$route"
         [[ -z "$inbound_tag" || -z "$match_type" || -z "$match_value" || -z "$relay_tag" ]] && continue
-        
+
         # 检查中转是否存在
         local relay_exists=0
         for rt in "${RELAY_TAGS[@]}"; do
-            if [[ "$rt" == "$relay_tag" ]]; then
-                relay_exists=1
-                break
-            fi
+            [[ "$rt" == "$relay_tag" ]] && relay_exists=1 && break
         done
         if [[ $relay_exists -eq 0 ]]; then
             print_warning "分流规则引用的中转 ${relay_tag} 不存在，跳过规则: ${match_type}=${match_value}"
             continue
         fi
-        
+
         # 根据匹配类型生成对应的 sing-box 规则
         local rule_part=""
         case "$match_type" in
-            domain_suffix)
-                rule_part="\"domain_suffix\":[\"${match_value}\"]"
-                ;;
-            domain)
-                rule_part="\"domain\":[\"${match_value}\"]"
-                ;;
-            domain_keyword)
-                rule_part="\"domain_keyword\":[\"${match_value}\"]"
-                ;;
-            ip_cidr)
-                rule_part="\"ip_cidr\":[\"${match_value}\"]"
-                ;;
-            *)
-                continue
-                ;;
+            domain_suffix)  rule_part="\"domain_suffix\":[\"${match_value}\"]" ;;
+            domain)         rule_part="\"domain\":[\"${match_value}\"]" ;;
+            domain_keyword) rule_part="\"domain_keyword\":[\"${match_value}\"]" ;;
+            ip_cidr)        rule_part="\"ip_cidr\":[\"${match_value}\"]" ;;
+            *)              continue ;;
         esac
-        
+
         route_rules+=("{\"inbound\":[\"${inbound_tag}\"],${rule_part},\"outbound\":\"${relay_tag}\"}")
         has_relay=1
     done
-    
+
     # 2. 为每个节点添加默认路由（仅当节点配置了中转且不是 direct）
     for i in "${!INBOUND_TAGS[@]}"; do
         local inbound_tag="${INBOUND_TAGS[$i]}"
         local relay_tag="${INBOUND_RELAY_TAGS[$i]}"
-        
-        # 如果节点配置了具体的中转（非 direct），则添加兜底规则
+
         if [[ "$relay_tag" != "direct" ]]; then
-            # 检查中转是否存在
             local relay_exists=0
             for rt in "${RELAY_TAGS[@]}"; do
-                if [[ "$rt" == "$relay_tag" ]]; then
-                    relay_exists=1
-                    break
-                fi
+                [[ "$rt" == "$relay_tag" ]] && relay_exists=1 && break
             done
             if [[ $relay_exists -eq 0 ]]; then
                 print_warning "节点 ${inbound_tag} 配置的中转 ${relay_tag} 不存在，将改为直连"
@@ -1174,10 +1133,10 @@ generate_config() {
             has_relay=1
         fi
     done
-    
-    # 组合路由配置
-    local route_json
+
+    # 组合路由 JSON
     local route_domain_resolver=",\"default_domain_resolver\":\"local\""
+    local route_json
     if [[ $has_relay -eq 1 ]]; then
         route_json="{\"rules\":["
         for i in "${!route_rules[@]}"; do
@@ -1188,20 +1147,21 @@ generate_config() {
     else
         route_json="{\"final\":\"direct\"${route_domain_resolver}}"
     fi
-    
-    # 构建 DNS 配置（根据出站 IP 模式和 DNS 模式）
-    # sing-box 1.12.0+ 重构了 DNS 配置，1.14.0 将移除旧格式兼容
-    local dns_json
+
+    echo "$route_json"
+}
+
+# 构建 DNS 配置
+build_dns_config() {
     local dns_strategy="prefer_ipv4"
     [[ "$OUTBOUND_IP_MODE" == "ipv6" ]] && dns_strategy="prefer_ipv6"
     [[ "$OUTBOUND_IP_MODE" == "ipv6_only" ]] && dns_strategy="ipv6_only"
 
-    # 根据用户配置的 DNS 模式生成远程 DNS 服务器配置
     local dns_remote_server
     dns_remote_server=$(build_dns_remote_server)
 
+    local dns_json
     if [[ $SB_GE_1_12 -eq 1 ]]; then
-        # 1.12.0+ 新 DNS 格式（兼容 1.14.0）
         dns_json="{
     \"servers\": [
       {
@@ -1215,7 +1175,6 @@ generate_config() {
     \"default_domain_resolver\": \"local\"
   }"
     else
-        # 旧版本 DNS 格式
         dns_json="{
     \"servers\": [
       {
@@ -1228,7 +1187,41 @@ generate_config() {
     \"strategy\": \"${dns_strategy}\"
   }"
     fi
-    
+
+    echo "$dns_json"
+}
+
+# ==================== 配置生成（主函数） ====================
+generate_config() {
+    print_info "生成最终配置文件..."
+
+    if [[ -f "${CONFIG_FILE}" ]]; then
+        local backup_file="${CONFIG_FILE}.bak"
+        cp "${CONFIG_FILE}" "${backup_file}" 2>/dev/null
+        print_info "已备份配置到: ${backup_file}"
+    fi
+
+    if [[ -z "$INBOUNDS_JSON" ]]; then
+        print_error "未找到任何入站节点，请先添加节点"
+        return 1
+    fi
+
+    # 加载中转配置
+    load_relays_from_file
+
+    # 构建各部分配置
+    local outbounds
+    outbounds=$(build_outbounds)
+
+    # 加载分流规则
+    load_domain_routes_from_file
+
+    local route_json
+    route_json=$(build_route_rules)
+
+    local dns_json
+    dns_json=$(build_dns_config)
+
     cat > ${CONFIG_FILE} << EOFCONFIG
 {
   "log": {
@@ -1241,7 +1234,7 @@ generate_config() {
   "route": ${route_json}
 }
 EOFCONFIG
-    
+
     print_success "配置文件生成完成"
 }
 

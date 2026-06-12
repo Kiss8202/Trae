@@ -143,9 +143,155 @@ load_inbounds_from_config() {
     return 0
 }
 # ==================== 从配置文件重新生成链接 ====================
+# ==================== 链接重新生成子函数 ====================
+
+# 从 inbound JSON 生成 Reality 链接
+regenerate_reality_link() {
+    local inbound="$1" port="$2"
+    local uuid=$(echo "$inbound" | jq -r '.users[0].uuid // ""' 2>/dev/null)
+    local sni=$(echo "$inbound" | jq -r '.tls.server_name // ""' 2>/dev/null)
+    local pbk=$(echo "$inbound" | jq -r '.tls.reality.public_key // ""' 2>/dev/null)
+    local sid=$(echo "$inbound" | jq -r '.tls.reality.short_id[0] // ""' 2>/dev/null)
+
+    [[ -z "$pbk" && -n "${REALITY_PUBLIC}" ]] && pbk="${REALITY_PUBLIC}"
+    [[ -z "$sid" && -n "${SHORT_ID}" ]] && sid="${SHORT_ID}"
+    [[ -z "$sni" ]] && sni="${DEFAULT_SNI}"
+
+    if [[ -n "$uuid" && -n "$pbk" ]]; then
+        local link_ipv4=$(generate_proto_link "reality" "${SERVER_IP}" "${port}" "uuid=${uuid}" "sni=${sni}" "pbk=${pbk}" "sid=${sid}")
+        add_link "$link_ipv4" "Reality" "" "${SERVER_IP}" "${port}" "${sni}"
+
+        if [[ -n "${SERVER_IPV6}" ]]; then
+            local link_ipv6=$(generate_proto_link "reality" "[${SERVER_IPV6}]" "${port}" "uuid=${uuid}" "sni=${sni}" "pbk=${pbk}" "sid=${sid}")
+            add_link "$link_ipv6" "Reality" "" "[${SERVER_IPV6}]" "${port}" "${sni}"
+        fi
+    fi
+}
+
+# 从 inbound JSON 生成 HTTPS 链接
+regenerate_https_link() {
+    local inbound="$1" port="$2"
+    local uuid=$(echo "$inbound" | jq -r '.users[0].uuid // ""' 2>/dev/null)
+    local sni=$(echo "$inbound" | jq -r '.tls.server_name // ""' 2>/dev/null)
+
+    [[ -z "$sni" ]] && sni="${DEFAULT_SNI}"
+
+    if [[ -n "$uuid" ]]; then
+        local link_ipv4=$(generate_proto_link "https" "${SERVER_IP}" "${port}" "uuid=${uuid}" "sni=${sni}")
+        add_link "$link_ipv4" "HTTPS" "" "${SERVER_IP}" "${port}" "${sni}"
+
+        if [[ -n "${SERVER_IPV6}" ]]; then
+            local link_ipv6=$(generate_proto_link "https" "[${SERVER_IPV6}]" "${port}" "uuid=${uuid}" "sni=${sni}")
+            add_link "$link_ipv6" "HTTPS" "" "[${SERVER_IPV6}]" "${port}" "${sni}"
+        fi
+    fi
+}
+
+# 从 inbound JSON 生成 Hysteria2 链接
+regenerate_hysteria2_link() {
+    local inbound="$1" port="$2"
+    local password=$(echo "$inbound" | jq -r '.users[0].password // ""' 2>/dev/null)
+    local sni=$(echo "$inbound" | jq -r '.tls.server_name // ""' 2>/dev/null)
+    local obfs_type=$(echo "$inbound" | jq -r '.obfs.type // ""' 2>/dev/null)
+    local obfs_password=$(echo "$inbound" | jq -r '.obfs.password // ""' 2>/dev/null)
+    local port_range_num=$(echo "$inbound" | jq -r '.port_range // 0' 2>/dev/null)
+    local listen_port=$(echo "$inbound" | jq -r '.listen_port' 2>/dev/null)
+
+    [[ -z "$sni" ]] && sni="${DEFAULT_SNI}"
+
+    if [[ -n "$password" ]]; then
+        local port_part="$port"
+        if [[ "$port_range_num" -gt 1 ]]; then
+            local end_port=$(( listen_port + port_range_num - 1 ))
+            port_part="${listen_port}-${end_port}"
+        fi
+
+        local link_ipv4=$(generate_proto_link "hysteria2" "${SERVER_IP}" "${port_part}" "password=${password}" "sni=${sni}" "obfs_type=${obfs_type}" "obfs_password=${obfs_password}")
+        add_link "$link_ipv4" "Hysteria2" "" "${SERVER_IP}" "${port_part}" "${sni}"
+
+        if [[ -n "${SERVER_IPV6}" ]]; then
+            local link_ipv6=$(generate_proto_link "hysteria2" "[${SERVER_IPV6}]" "${port_part}" "password=${password}" "sni=${sni}" "obfs_type=${obfs_type}" "obfs_password=${obfs_password}")
+            add_link "$link_ipv6" "Hysteria2" "" "[${SERVER_IPV6}]" "${port_part}" "${sni}"
+        fi
+    fi
+}
+
+# 从 inbound JSON 生成 SOCKS5 链接
+regenerate_socks5_link() {
+    local inbound="$1" port="$2"
+    local username=$(echo "$inbound" | jq -r '.users[0].username // ""' 2>/dev/null)
+    local password=$(echo "$inbound" | jq -r '.users[0].password // ""' 2>/dev/null)
+
+    local link_ipv4=$(generate_proto_link "socks5" "${SERVER_IP}" "${port}" "username=${username}" "password=${password}")
+    add_link "$link_ipv4" "SOCKS5" "" "${SERVER_IP}" "${port}" ""
+
+    if [[ -n "${SERVER_IPV6}" ]]; then
+        local link_ipv6=$(generate_proto_link "socks5" "[${SERVER_IPV6}]" "${port}" "username=${username}" "password=${password}")
+        add_link "$link_ipv6" "SOCKS5" "" "[${SERVER_IPV6}]" "${port}" ""
+    fi
+}
+
+# 从 inbound JSON 生成 ShadowTLS 链接
+regenerate_shadowtls_link() {
+    local inbound="$1" port="$2"
+    local shadowtls_password=$(echo "$inbound" | jq -r '.users[0].password // ""' 2>/dev/null)
+    local sni=$(echo "$inbound" | jq -r '.handshake.server // ""' 2>/dev/null)
+
+    [[ -z "$sni" ]] && sni="${DEFAULT_SNI}"
+
+    if [[ -n "$shadowtls_password" ]]; then
+        local ss_inbound=$(jq -c ".inbounds[] | select(.tag == \"shadowsocks-in-${port}\")" "${CONFIG_FILE}" 2>/dev/null)
+        local ss_password=$(echo "$ss_inbound" | jq -r '.password // ""' 2>/dev/null)
+        local ss_method=$(echo "$ss_inbound" | jq -r '.method // "2022-blake3-aes-128-gcm"' 2>/dev/null)
+
+        if [[ -n "$ss_password" ]]; then
+            local link_ipv4=$(generate_proto_link "shadowtls" "${SERVER_IP}" "${port}" "sni=${sni}" "shadowtls_password=${shadowtls_password}" "ss_method=${ss_method}" "ss_password=${ss_password}")
+            add_link "$link_ipv4" "ShadowTLS v3" "" "${SERVER_IP}" "${port}" "${sni}"
+
+            local client_config_file_ipv4="${LINK_DIR}/shadowtls_client_${port}_ipv4.json"
+            generate_shadowtls_client_config "${client_config_file_ipv4}" "${SERVER_IP}" "${port}" "${sni}" "${shadowtls_password}" "${ss_method}" "${ss_password}"
+
+            if [[ -n "${SERVER_IPV6}" ]]; then
+                local link_ipv6=$(generate_proto_link "shadowtls" "[${SERVER_IPV6}]" "${port}" "sni=${sni}" "shadowtls_password=${shadowtls_password}" "ss_method=${ss_method}" "ss_password=${ss_password}")
+                add_link "$link_ipv6" "ShadowTLS v3" "" "[${SERVER_IPV6}]" "${port}" "${sni}"
+
+                local client_config_file_ipv6="${LINK_DIR}/shadowtls_client_${port}_ipv6.json"
+                generate_shadowtls_client_config "${client_config_file_ipv6}" "${SERVER_IPV6}" "${port}" "${sni}" "${shadowtls_password}" "${ss_method}" "${ss_password}"
+            fi
+        fi
+    fi
+}
+
+# 从 inbound JSON 生成 AnyTLS 链接
+regenerate_anytls_link() {
+    local inbound="$1" port="$2"
+    local password=$(echo "$inbound" | jq -r '.users[0].password // ""' 2>/dev/null)
+    local sni=$(echo "$inbound" | jq -r '.tls.server_name // ""' 2>/dev/null)
+    local reality_enabled=$(echo "$inbound" | jq -r '.tls.reality.enabled // false' 2>/dev/null)
+
+    [[ -z "$sni" ]] && sni="${DEFAULT_SNI}"
+
+    if [[ -n "$password" ]]; then
+        if [[ "$reality_enabled" == "true" ]]; then
+            local link_text="[AnyTLS+REALITY] ${SERVER_IP}:${port} (SNI: ${sni})\n请使用 sing-box 客户端配置文件\n----------------------------------------\n\n"
+            ALL_LINKS_TEXT="${ALL_LINKS_TEXT}${link_text}"
+            ANYTLS_LINKS="${ANYTLS_LINKS}${link_text}"
+        else
+            local link_ipv4=$(generate_proto_link "anytls" "${SERVER_IP}" "${port}" "password=${password}" "sni=${sni}")
+            add_link "$link_ipv4" "AnyTLS" "" "${SERVER_IP}" "${port}" "${sni}"
+
+            if [[ -n "${SERVER_IPV6}" ]]; then
+                local link_ipv6=$(generate_proto_link "anytls" "[${SERVER_IPV6}]" "${port}" "password=${password}" "sni=${sni}")
+                add_link "$link_ipv6" "AnyTLS" "" "[${SERVER_IPV6}]" "${port}" "${sni}"
+            fi
+        fi
+    fi
+}
+
+# ==================== 链接重新生成（主函数） ====================
 regenerate_links_from_config() {
     print_info "正在从配置文件重新生成链接..."
-    
+
     # 清空所有链接变量
     ALL_LINKS_TEXT=""
     REALITY_LINKS=""
@@ -154,8 +300,8 @@ regenerate_links_from_config() {
     SHADOWTLS_LINKS=""
     HTTPS_LINKS=""
     ANYTLS_LINKS=""
-    
-    # 加载密钥文件（安全读取，避免代码注入）
+
+    # 加载密钥文件
     if [[ -f "${KEY_FILE}" ]]; then
         while IFS='=' read -r key value; do
             [[ "$key" =~ ^#.*$ || -z "$key" ]] && continue
@@ -168,196 +314,55 @@ regenerate_links_from_config() {
             esac
         done < "${KEY_FILE}"
     fi
-    
+
     # 确保 SERVER_IP 已设置
     if [[ -z "${SERVER_IP}" ]]; then
         get_ip
     fi
-    
+
     if [[ ! -f "${CONFIG_FILE}" ]] || ! command -v jq &>/dev/null; then
         print_warning "无法重新生成链接：配置文件不存在或 jq 未安装"
         return 1
     fi
-    
+
     local inbounds_count=$(jq '.inbounds | length' "${CONFIG_FILE}" 2>/dev/null || echo "0")
-    
+
     if [[ "$inbounds_count" -eq 0 ]]; then
         print_warning "配置文件中没有找到节点"
         return 1
     fi
-    
+
     # 加载 IP 配置
     load_ip_config
-    
-    # 遍历每个inbound生成链接
+
+    # 遍历每个 inbound 生成链接
     for ((i=0; i<inbounds_count; i++)); do
         local inbound=$(jq -c ".inbounds[${i}]" "${CONFIG_FILE}" 2>/dev/null)
-        
-        if [[ -z "$inbound" ]]; then
-            continue
-        fi
-        
+        [[ -z "$inbound" ]] && continue
+
         local type=$(echo "$inbound" | jq -r '.type' 2>/dev/null)
         local port=$(echo "$inbound" | jq -r '.listen_port' 2>/dev/null)
-        local tag=$(echo "$inbound" | jq -r '.tag' 2>/dev/null)
-        
-        if [[ -z "$type" || -z "$port" ]]; then
-            continue
-        fi
-        
-        # 根据类型生成链接
+        [[ -z "$type" || -z "$port" ]] && continue
+
         case "$type" in
             "vless")
                 local tls_enabled=$(echo "$inbound" | jq -r '.tls.enabled // false' 2>/dev/null)
                 if [[ "$tls_enabled" == "true" ]]; then
                     local reality_enabled=$(echo "$inbound" | jq -r '.tls.reality.enabled // false' 2>/dev/null)
                     if [[ "$reality_enabled" == "true" ]]; then
-                        # Reality
-                        local uuid=$(echo "$inbound" | jq -r '.users[0].uuid // ""' 2>/dev/null)
-                        local sni=$(echo "$inbound" | jq -r '.tls.server_name // ""' 2>/dev/null)
-                        local pbk=$(echo "$inbound" | jq -r '.tls.reality.public_key // ""' 2>/dev/null)
-                        local sid=$(echo "$inbound" | jq -r '.tls.reality.short_id[0] // ""' 2>/dev/null)
-                        
-                        [[ -z "$pbk" && -n "${REALITY_PUBLIC}" ]] && pbk="${REALITY_PUBLIC}"
-                        [[ -z "$sid" && -n "${SHORT_ID}" ]] && sid="${SHORT_ID}"
-                        [[ -z "$sni" ]] && sni="${DEFAULT_SNI}"
-                        
-                        if [[ -n "$uuid" && -n "$pbk" ]]; then
-                            # IPv4 链接
-                            local link_ipv4=$(generate_proto_link "reality" "${SERVER_IP}" "${port}" "uuid=${uuid}" "sni=${sni}" "pbk=${pbk}" "sid=${sid}")
-                            add_link "$link_ipv4" "Reality" "" "${SERVER_IP}" "${port}" "${sni}"
-
-                            # IPv6 链接（如果有）
-                            if [[ -n "${SERVER_IPV6}" ]]; then
-                                local link_ipv6=$(generate_proto_link "reality" "[${SERVER_IPV6}]" "${port}" "uuid=${uuid}" "sni=${sni}" "pbk=${pbk}" "sid=${sid}")
-                                add_link "$link_ipv6" "Reality" "" "[${SERVER_IPV6}]" "${port}" "${sni}"
-                            fi
-                        fi
+                        regenerate_reality_link "$inbound" "$port"
                     else
-                        # HTTPS
-                        local uuid=$(echo "$inbound" | jq -r '.users[0].uuid // ""' 2>/dev/null)
-                        local sni=$(echo "$inbound" | jq -r '.tls.server_name // ""' 2>/dev/null)
-                        
-                        [[ -z "$sni" ]] && sni="${DEFAULT_SNI}"
-                        
-                        if [[ -n "$uuid" ]]; then
-                            # IPv4 链接
-                            local link_ipv4=$(generate_proto_link "https" "${SERVER_IP}" "${port}" "uuid=${uuid}" "sni=${sni}")
-                            add_link "$link_ipv4" "HTTPS" "" "${SERVER_IP}" "${port}" "${sni}"
-
-                            # IPv6 链接（如果有）
-                            if [[ -n "${SERVER_IPV6}" ]]; then
-                                local link_ipv6=$(generate_proto_link "https" "[${SERVER_IPV6}]" "${port}" "uuid=${uuid}" "sni=${sni}")
-                                add_link "$link_ipv6" "HTTPS" "" "[${SERVER_IPV6}]" "${port}" "${sni}"
-                            fi
-                        fi
+                        regenerate_https_link "$inbound" "$port"
                     fi
                 fi
                 ;;
-            "hysteria2")
-                local password=$(echo "$inbound" | jq -r '.users[0].password // ""' 2>/dev/null)
-                local sni=$(echo "$inbound" | jq -r '.tls.server_name // ""' 2>/dev/null)
-                local obfs_type=$(echo "$inbound" | jq -r '.obfs.type // ""' 2>/dev/null)
-                local obfs_password=$(echo "$inbound" | jq -r '.obfs.password // ""' 2>/dev/null)
-                local port_range_num=$(echo "$inbound" | jq -r '.port_range // 0' 2>/dev/null)
-                local listen_port=$(echo "$inbound" | jq -r '.listen_port' 2>/dev/null)
-                
-                [[ -z "$sni" ]] && sni="${DEFAULT_SNI}"
-                
-                if [[ -n "$password" ]]; then
-                    local port_part="$port"
-                    if [[ "$port_range_num" -gt 1 ]]; then
-                        # 端口跳跃
-                        local end_port=$(( listen_port + port_range_num - 1 ))
-                        port_part="${listen_port}-${end_port}"
-                    fi
-
-                    # IPv4 链接
-                    local link_ipv4=$(generate_proto_link "hysteria2" "${SERVER_IP}" "${port_part}" "password=${password}" "sni=${sni}" "obfs_type=${obfs_type}" "obfs_password=${obfs_password}")
-                    add_link "$link_ipv4" "Hysteria2" "" "${SERVER_IP}" "${port_part}" "${sni}"
-
-                    # IPv6 链接（如果有）
-                    if [[ -n "${SERVER_IPV6}" ]]; then
-                        local link_ipv6=$(generate_proto_link "hysteria2" "[${SERVER_IPV6}]" "${port_part}" "password=${password}" "sni=${sni}" "obfs_type=${obfs_type}" "obfs_password=${obfs_password}")
-                        add_link "$link_ipv6" "Hysteria2" "" "[${SERVER_IPV6}]" "${port_part}" "${sni}"
-                    fi
-                fi
-                ;;
-            "socks")
-                local username=$(echo "$inbound" | jq -r '.users[0].username // ""' 2>/dev/null)
-                local password=$(echo "$inbound" | jq -r '.users[0].password // ""' 2>/dev/null)
-                
-                # IPv4 链接
-                local link_ipv4=$(generate_proto_link "socks5" "${SERVER_IP}" "${port}" "username=${username}" "password=${password}")
-                add_link "$link_ipv4" "SOCKS5" "" "${SERVER_IP}" "${port}" ""
-
-                # IPv6 链接（如果有）
-                if [[ -n "${SERVER_IPV6}" ]]; then
-                    local link_ipv6=$(generate_proto_link "socks5" "[${SERVER_IPV6}]" "${port}" "username=${username}" "password=${password}")
-                    add_link "$link_ipv6" "SOCKS5" "" "[${SERVER_IPV6}]" "${port}" ""
-                fi
-                ;;
-            "shadowtls")
-                local shadowtls_password=$(echo "$inbound" | jq -r '.users[0].password // ""' 2>/dev/null)
-                local sni=$(echo "$inbound" | jq -r '.handshake.server // ""' 2>/dev/null)
-                
-                [[ -z "$sni" ]] && sni="${DEFAULT_SNI}"
-                
-                if [[ -n "$shadowtls_password" ]]; then
-                    local ss_inbound=$(jq -c ".inbounds[] | select(.tag == \"shadowsocks-in-${port}\")" "${CONFIG_FILE}" 2>/dev/null)
-                    local ss_password=$(echo "$ss_inbound" | jq -r '.password // ""' 2>/dev/null)
-                    local ss_method=$(echo "$ss_inbound" | jq -r '.method // "2022-blake3-aes-128-gcm"' 2>/dev/null)
-                    
-                    if [[ -n "$ss_password" ]]; then
-                        # IPv4 链接
-                        local link_ipv4=$(generate_proto_link "shadowtls" "${SERVER_IP}" "${port}" "sni=${sni}" "shadowtls_password=${shadowtls_password}" "ss_method=${ss_method}" "ss_password=${ss_password}")
-                        add_link "$link_ipv4" "ShadowTLS v3" "" "${SERVER_IP}" "${port}" "${sni}"
-
-                        # 生成 IPv4 客户端配置文件
-                        local client_config_file_ipv4="${LINK_DIR}/shadowtls_client_${port}_ipv4.json"
-                        generate_shadowtls_client_config "${client_config_file_ipv4}" "${SERVER_IP}" "${port}" "${sni}" "${shadowtls_password}" "${ss_method}" "${ss_password}"
-
-                        # IPv6 链接（如果有）
-                        if [[ -n "${SERVER_IPV6}" ]]; then
-                            local link_ipv6=$(generate_proto_link "shadowtls" "[${SERVER_IPV6}]" "${port}" "sni=${sni}" "shadowtls_password=${shadowtls_password}" "ss_method=${ss_method}" "ss_password=${ss_password}")
-                            add_link "$link_ipv6" "ShadowTLS v3" "" "[${SERVER_IPV6}]" "${port}" "${sni}"
-
-                            # 生成 IPv6 客户端配置文件
-                            local client_config_file_ipv6="${LINK_DIR}/shadowtls_client_${port}_ipv6.json"
-                            generate_shadowtls_client_config "${client_config_file_ipv6}" "${SERVER_IPV6}" "${port}" "${sni}" "${shadowtls_password}" "${ss_method}" "${ss_password}"
-                        fi
-                    fi
-                fi
-                ;;
-            "anytls")
-                local password=$(echo "$inbound" | jq -r '.users[0].password // ""' 2>/dev/null)
-                local sni=$(echo "$inbound" | jq -r '.tls.server_name // ""' 2>/dev/null)
-                local reality_enabled=$(echo "$inbound" | jq -r '.tls.reality.enabled // false' 2>/dev/null)
-                
-                [[ -z "$sni" ]] && sni="${DEFAULT_SNI}"
-                
-                if [[ -n "$password" ]]; then
-                    if [[ "$reality_enabled" == "true" ]]; then
-                        # AnyTLS+REALITY 不生成标准链接，提示使用客户端配置
-                        local link_text="[AnyTLS+REALITY] ${SERVER_IP}:${port} (SNI: ${sni})\n请使用 sing-box 客户端配置文件\n----------------------------------------\n\n"
-                        ALL_LINKS_TEXT="${ALL_LINKS_TEXT}${link_text}"
-                        ANYTLS_LINKS="${ANYTLS_LINKS}${link_text}"
-                    else
-                        # IPv4 链接
-                        local link_ipv4=$(generate_proto_link "anytls" "${SERVER_IP}" "${port}" "password=${password}" "sni=${sni}")
-                        add_link "$link_ipv4" "AnyTLS" "" "${SERVER_IP}" "${port}" "${sni}"
-
-                        # IPv6 链接（如果有）
-                        if [[ -n "${SERVER_IPV6}" ]]; then
-                            local link_ipv6=$(generate_proto_link "anytls" "[${SERVER_IPV6}]" "${port}" "password=${password}" "sni=${sni}")
-                            add_link "$link_ipv6" "AnyTLS" "" "[${SERVER_IPV6}]" "${port}" "${sni}"
-                        fi
-                    fi
-                fi
-                ;;
+            "hysteria2")  regenerate_hysteria2_link "$inbound" "$port" ;;
+            "socks")      regenerate_socks5_link "$inbound" "$port" ;;
+            "shadowtls")  regenerate_shadowtls_link "$inbound" "$port" ;;
+            "anytls")     regenerate_anytls_link "$inbound" "$port" ;;
         esac
     done
-    
+
     print_success "链接重新生成完成"
     save_links_to_files
 }

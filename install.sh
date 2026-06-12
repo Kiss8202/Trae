@@ -40,6 +40,26 @@ if [[ ! -d "$MODULES_DIR" ]]; then
             exit 1
         fi
     done
+else
+    # 模块目录已存在，检查版本是否需要更新
+    CURRENT_VERSION=""
+    if [[ -f "${MODULES_DIR}/core.sh" ]]; then
+        CURRENT_VERSION=$(grep '^MODULE_VERSION=' "${MODULES_DIR}/core.sh" 2>/dev/null | head -1 | cut -d'"' -f2)
+    fi
+    REMOTE_VERSION=""
+    REMOTE_VERSION=$(curl -sf --connect-timeout 5 --max-time 10 "${MODULES_URL}/core.sh" 2>/dev/null | grep '^MODULE_VERSION=' | head -1 | cut -d'"' -f2)
+
+    if [[ -n "$REMOTE_VERSION" && "$REMOTE_VERSION" != "$CURRENT_VERSION" ]]; then
+        echo "[引导] 检测到模块更新 (本地: ${CURRENT_VERSION:-未知} → 远程: ${REMOTE_VERSION})，正在更新..."
+        for module in core install links dns relay protocols config menu; do
+            echo -n "[引导] 更新模块 ${module}.sh ... "
+            if curl -sfL --connect-timeout 10 --max-time 30 "${MODULES_URL}/${module}.sh" -o "${MODULES_DIR}/${module}.sh" 2>/dev/null; then
+                echo "完成"
+            else
+                echo "失败（保留旧版本）"
+            fi
+        done
+    fi
 fi
 
 # 按顺序加载模块

@@ -3,17 +3,35 @@
 install_singbox() {
     print_info "检查 sing-box 安装状态（支持断点续装）..."
 
-    # ---------- 1. 安装系统依赖（检查 jq 即可代表基础工具） ----------
-    if ! command -v jq &>/dev/null; then
-        print_info "缺少基础依赖，开始安装..."
+    # ---------- 1. 安装系统依赖 ----------
+    local missing_deps=()
+    for cmd in jq curl wget openssl; do
+        if ! command -v "$cmd" &>/dev/null; then
+            missing_deps+=("$cmd")
+        fi
+    done
+
+    if [[ ${#missing_deps[@]} -gt 0 ]]; then
+        print_info "缺少依赖: ${missing_deps[*]}，开始安装..."
         if [[ $ALPINE -eq 1 ]]; then
-            # Alpine 低内存：逐个安装
             for pkg in curl wget jq openssl util-linux coreutils gcompat libexecinfo; do
                 apk add --no-cache "$pkg" >/dev/null 2>&1
                 sleep 0.5
             done
         else
             apt-get update -qq && apt-get install -y curl wget jq openssl uuid-runtime >/dev/null 2>&1
+        fi
+
+        # 验证关键依赖是否安装成功
+        local still_missing=()
+        for cmd in jq curl wget openssl; do
+            if ! command -v "$cmd" &>/dev/null; then
+                still_missing+=("$cmd")
+            fi
+        done
+        if [[ ${#still_missing[@]} -gt 0 ]]; then
+            print_error "以下依赖安装失败: ${still_missing[*]}"
+            return 1
         fi
         print_success "依赖安装完成"
     else
@@ -50,6 +68,7 @@ install_singbox() {
 
     # ---------- 3. 下载、解压、安装二进制（如需要） ----------
     if [[ $need_download -eq 1 ]]; then
+        local LATEST=""
         local retry=0
         local max_retries=3
         while [[ $retry -lt $max_retries ]]; do

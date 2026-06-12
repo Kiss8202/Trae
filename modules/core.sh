@@ -1,4 +1,7 @@
 # ==================== sing-box 管理脚本模块 ====================
+# 模块版本号，用于检查模块是否需要更新
+MODULE_VERSION="1.1"
+
 # ==================== 颜色定义 ====================
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -88,7 +91,11 @@ cleanup_temp_files() {
         rm -rf "$f" 2>/dev/null
     done
 }
-trap cleanup_temp_files EXIT INT TERM
+# 防止重复 source 时覆盖 trap
+if [[ -z "${TRAP_SET:-}" ]]; then
+    trap cleanup_temp_files EXIT INT TERM
+    TRAP_SET=1
+fi
 
 # ==================== jq 配置文件原子更新 ====================
 # 用法: jq_update_config <jq参数...>
