@@ -1098,12 +1098,19 @@ EOFCONFIG
 }
 
 start_svc() {
+    # 检查 sing-box 二进制是否存在
+    if [[ ! -x "${INSTALL_DIR}/sing-box" ]]; then
+        print_error "sing-box 未安装或不可执行 (${INSTALL_DIR}/sing-box)"
+        print_info "请先执行安装或重启脚本以完成安装"
+        return 1
+    fi
+
     print_info "验证配置文件..."
-    
+
     local check_output
     check_output=$("${INSTALL_DIR}/sing-box" check -c "${CONFIG_FILE}" 2>&1)
     local check_exit_code=$?
-    
+
     if [[ $check_exit_code -ne 0 ]]; then
         print_error "配置验证失败 (退出码: ${check_exit_code})"
         print_warning "错误详情:"
