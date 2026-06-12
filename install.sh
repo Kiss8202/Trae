@@ -117,7 +117,7 @@ trap cleanup_temp_files EXIT INT TERM
 jq_update_config() {
     local tmp_file
     tmp_file=$(mktemp) || { print_error "创建临时文件失败"; return 1; }
-    if jq "$@" "${CONFIG_FILE}" > "$tmp_file"; then
+    if jq "$@" "${CONFIG_FILE}" > "$tmp_file" && [[ -s "$tmp_file" ]]; then
         mv "$tmp_file" "${CONFIG_FILE}"
         return 0
     else
@@ -125,6 +125,41 @@ jq_update_config() {
         print_error "配置修改失败"
         return 1
     fi
+}
+
+# ==================== 输入验证与安全 ====================
+# 验证 SNI 域名格式
+validate_sni() {
+    local sni="$1"
+    if [[ -z "$sni" ]]; then
+        return 0  # 空值由调用方处理
+    fi
+    # SNI 只允许域名格式（字母数字点连字符）
+    if [[ ! "$sni" =~ ^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$ ]]; then
+        print_error "SNI 格式无效: ${sni}（仅允许域名格式）"
+        return 1
+    fi
+    return 0
+}
+
+# JSON 字符串转义（防止用户输入破坏 JSON 结构）
+json_escape() {
+    local str="$1"
+    str="${str//\\/\\\\}"   # 反斜杠
+    str="${str//\"/\\\"}"   # 双引号
+    str="${str//$'\n'/\\n}" # 换行
+    str="${str//$'\r'/\\r}" # 回车
+    str="${str//$'\t'/\\t}" # 制表符
+    echo -n "$str"
+}
+
+# 验证端口号
+validate_port() {
+    local port="$1"
+    if ! [[ "$port" =~ ^[0-9]+$ ]] || (( port < 1 || port > 65535 )); then
+        return 1
+    fi
+    return 0
 }
 
 # ==================== 交互辅助函数 ====================
@@ -383,6 +418,52 @@ detect_system() {
     
     print_success "系统: ${OS} (${ARCH})"
 }
+# ==================== sing-box 版本检测 ====================
+# 全局版本标志
+SB_GE_1_11=0
+SB_GE_1_12=0
+SB_GE_1_13=0
+SB_GE_1_14=0
+
+detect_singbox_version() {
+    SB_GE_1_11=0
+    SB_GE_1_12=0
+    SB_GE_1_13=0
+    SB_GE_1_14=0
+
+    if ! [[ -x "${INSTALL_DIR}/sing-box" ]]; then
+        return 0
+    fi
+
+    local version=$(${INSTALL_DIR}/sing-box version 2>/dev/null | grep -oP 'sing-box version \K[0-9.]+' || echo "0.0.0")
+    if [[ -z "$version" || "$version" == "0.0.0" ]]; then
+        return 0
+    fi
+
+    local major minor patch
+    IFS='.' read -r major minor patch <<< "$version"
+    major=$((10#${major:-0}))
+    minor=$((10#${minor:-0}))
+
+    # 设置版本标志
+    if [[ $major -gt 1 ]] || [[ $major -eq 1 && $minor -ge 14 ]]; then
+        SB_GE_1_14=1
+        SB_GE_1_13=1
+        SB_GE_1_12=1
+        SB_GE_1_11=1
+    elif [[ $major -eq 1 && $minor -ge 13 ]]; then
+        SB_GE_1_13=1
+        SB_GE_1_12=1
+        SB_GE_1_11=1
+    elif [[ $major -eq 1 && $minor -ge 12 ]]; then
+        SB_GE_1_12=1
+        SB_GE_1_11=1
+    elif [[ $major -eq 1 && $minor -ge 11 ]]; then
+        SB_GE_1_11=1
+    fi
+
+    print_info "sing-box 版本: ${version} (1.11:${SB_GE_1_11} 1.12:${SB_GE_1_12} 1.13:${SB_GE_1_13} 1.14:${SB_GE_1_14})"
+}
 # ==================== 服务控制（兼容 systemd / OpenRC） ====================
 svc_start() {
     if [[ $ALPINE -eq 1 ]]; then
@@ -527,10 +608,15 @@ install_singbox() {
         local retry=0
         local max_retries=3
         while [[ $retry -lt $max_retries ]]; do
-            LATEST=$(curl -s --connect-timeout 10 "https://api.github.com/repos/SagerNet/sing-box/releases/latest" | jq -r '.tag_name' | sed 's/v//')
+            local api_response
+            api_response=$(curl -sf --connect-timeout 10 --max-time 30 "https://api.github.com/repos/SagerNet/sing-box/releases/latest" 2>/dev/null)
+            if [[ -n "$api_response" ]]; then
+                LATEST=$(echo "$api_response" | jq -r '.tag_name' 2>/dev/null | sed 's/v//')
+            fi
             [[ -n "$LATEST" ]] && break
             ((retry++))
-            [[ $retry -lt $max_retries ]] && sleep 2
+            print_warning "获取版本信息失败，重试 ${retry}/${max_retries}..."
+            [[ $retry -lt $max_retries ]] && sleep 3
         done
         [[ -z "$LATEST" ]] && LATEST="1.12.0"
         print_info "目标版本: ${LATEST}"
@@ -1407,8 +1493,14 @@ setup_reality() {
     
     echo -e "${YELLOW}请输入SNI域名（建议使用常见HTTPS网站域名）${NC}"
     echo -e "${CYAN}例如: ${DEFAULT_SNI1}${NC}"
-    read -p "SNI域名 [${DEFAULT_SNI}]: " SNI
-    SNI=${SNI:-${DEFAULT_SNI}}
+    while true; do
+        read -p "SNI域名 [${DEFAULT_SNI}]: " SNI
+        SNI=${SNI:-${DEFAULT_SNI}}
+        if validate_sni "$SNI"; then
+            break
+        fi
+        print_warning "请重新输入有效的域名格式"
+    done
     
     # 每个节点使用独立UUID
     local NODE_UUID=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null)
@@ -1484,8 +1576,14 @@ setup_hysteria2() {
     
     echo -e "${YELLOW}请输入SNI域名（建议使用常见HTTPS网站域名）${NC}"
     echo -e "${CYAN}例如: ${DEFAULT_SNI1}${NC}"
-    read -p "SNI域名 [${DEFAULT_SNI}]: " HY2_SNI
-    HY2_SNI=${HY2_SNI:-${DEFAULT_SNI}}
+    while true; do
+        read -p "SNI域名 [${DEFAULT_SNI}]: " HY2_SNI
+        HY2_SNI=${HY2_SNI:-${DEFAULT_SNI}}
+        if validate_sni "$HY2_SNI"; then
+            break
+        fi
+        print_warning "请重新输入有效的域名格式"
+    done
     
     # 是否启用 Salamander 混淆
     read -p "是否启用 Salamander 混淆？(y/N): " ENABLE_OBFS
@@ -1498,7 +1596,29 @@ setup_hysteria2() {
         fi
         print_info "混淆密码: ${OBFS_PASSWORD}"
     fi
-    
+
+    # 带宽配置（Brutal 拥塞控制）
+    echo -e "${YELLOW}是否配置带宽限制？(y/N)${NC}"
+    echo -e "${CYAN}提示: Hysteria2 使用 Brutal 拥塞控制，配置带宽可获得更好性能${NC}"
+    read -p "配置带宽? [y/N]: " ENABLE_BW
+    ENABLE_BW=${ENABLE_BW:-N}
+    local BW_CONFIG=""
+    if [[ "$ENABLE_BW" =~ ^[Yy]$ ]]; then
+        read -p "上传带宽 (Mbps, 留空不限制): " UP_MBPS
+        read -p "下载带宽 (Mbps, 留空不限制): " DOWN_MBPS
+        local bw_parts=""
+        if [[ -n "$UP_MBPS" && "$UP_MBPS" =~ ^[0-9]+$ ]]; then
+            bw_parts+="\"up_mbps\": ${UP_MBPS}"
+        fi
+        if [[ -n "$DOWN_MBPS" && "$DOWN_MBPS" =~ ^[0-9]+$ ]]; then
+            [[ -n "$bw_parts" ]] && bw_parts+=","
+            bw_parts+="\"down_mbps\": ${DOWN_MBPS}"
+        fi
+        if [[ -n "$bw_parts" ]]; then
+            BW_CONFIG=",${bw_parts}"
+        fi
+    fi
+
     print_info "为 ${HY2_SNI} 生成自签证书..."
     gen_cert_for_sni "${HY2_SNI}"
     
@@ -1524,14 +1644,21 @@ setup_hysteria2() {
   \"tag\": \"hy2-in-${PORT}\",
   \"listen\": \"${listen_addr}\",
   \"listen_port\": ${PORT},
-  \"users\": [{\"password\": \"${NODE_HY2_PASSWORD}\"}],
+  \"users\": [{\"password\": \"${NODE_HY2_PASSWORD}\"}]${BW_CONFIG},
   \"tls\": {
     \"enabled\": true,
     \"alpn\": [\"h3\"],
     \"server_name\": \"${HY2_SNI}\",
     \"certificate_path\": \"${CERT_DIR}/${HY2_SNI}/cert.pem\",
     \"key_path\": \"${CERT_DIR}/${HY2_SNI}/private.key\"
-  }${obfs_config}
+  }${obfs_config},
+  \"masquerade\": {
+    \"type\": \"proxy\",
+    \"proxy\": {
+      \"url\": \"https://www.bing.com\",
+      \"rewrite_host\": true
+    }
+  }
 }"
     
     if [[ -z "$INBOUNDS_JSON" ]]; then
@@ -1669,8 +1796,14 @@ setup_shadowtls() {
     
     echo -e "${YELLOW}请输入SNI域名（建议使用常见HTTPS网站域名）${NC}"
     echo -e "${CYAN}例如: ${DEFAULT_SNI1}${NC}"
-    read -p "SNI域名 [${DEFAULT_SNI}]: " SHADOWTLS_SNI
-    SHADOWTLS_SNI=${SHADOWTLS_SNI:-${DEFAULT_SNI}}
+    while true; do
+        read -p "SNI域名 [${DEFAULT_SNI}]: " SHADOWTLS_SNI
+        SHADOWTLS_SNI=${SHADOWTLS_SNI:-${DEFAULT_SNI}}
+        if validate_sni "$SHADOWTLS_SNI"; then
+            break
+        fi
+        print_warning "请重新输入有效的域名格式"
+    done
     
     print_info "生成配置文件..."
     print_warning "ShadowTLS 通过伪装真实域名的TLS握手工作"
@@ -1767,8 +1900,14 @@ setup_https() {
     
     echo -e "${YELLOW}请输入SNI域名（建议使用常见HTTPS网站域名）${NC}"
     echo -e "${CYAN}例如: ${DEFAULT_SNI1}${NC}"
-    read -p "SNI域名 [${DEFAULT_SNI}]: " HTTPS_SNI
-    HTTPS_SNI=${HTTPS_SNI:-${DEFAULT_SNI}}
+    while true; do
+        read -p "SNI域名 [${DEFAULT_SNI}]: " HTTPS_SNI
+        HTTPS_SNI=${HTTPS_SNI:-${DEFAULT_SNI}}
+        if validate_sni "$HTTPS_SNI"; then
+            break
+        fi
+        print_warning "请重新输入有效的域名格式"
+    done
     
     print_info "为 ${HTTPS_SNI} 生成自签证书..."
     gen_cert_for_sni "${HTTPS_SNI}"
@@ -1847,8 +1986,14 @@ setup_anytls() {
 
     echo -e "${YELLOW}请输入 SNI 域名（用于 TLS 及 REALITY handshake）${NC}"
     echo -e "${CYAN}例如: ${DEFAULT_SNI1}${NC}"
-    read -p "SNI 域名 [${DEFAULT_SNI}]: " ANYTLS_SNI
-    ANYTLS_SNI=${ANYTLS_SNI:-${DEFAULT_SNI}}
+    while true; do
+        read -p "SNI 域名 [${DEFAULT_SNI}]: " ANYTLS_SNI
+        ANYTLS_SNI=${ANYTLS_SNI:-${DEFAULT_SNI}}
+        if validate_sni "$ANYTLS_SNI"; then
+            break
+        fi
+        print_warning "请重新输入有效的域名格式"
+    done
 
     # 每个节点使用独立密码
     local NODE_ANYTLS_PASSWORD=$(openssl rand -hex 16)
@@ -1963,12 +2108,14 @@ setup_anytls() {
         }
       }
     },
-    { "type": "direct", "tag": "direct" },
-    { "type": "block", "tag": "block" }
+    { "type": "direct", "tag": "direct" }
   ],
   "route": {
     "final": "AnyTLS+REALITY",
-    "auto_detect_interface": true
+    "auto_detect_interface": true,
+    "rules": [
+      {"action":"sniff","protocols":["http","tls","quic"]}
+    ]
   }
 }
 EOF
@@ -2275,6 +2422,66 @@ parse_vmess_link() {
     local uuid=$(echo "$json" | jq -r '.id')
     local alterId=$(echo "$json" | jq -r '.aid // 0')
     local security=$(echo "$json" | jq -r '.scy // "auto"')
+    local net=$(echo "$json" | jq -r '.net // "tcp"')
+    local path=$(echo "$json" | jq -r '.path // ""')
+    local host=$(echo "$json" | jq -r '.host // ""')
+    local tls=$(echo "$json" | jq -r '.tls // ""')
+    local sni=$(echo "$json" | jq -r '.sni // ""')
+    local alpn=$(echo "$json" | jq -r '.alpn // ""')
+    
+    # 构建传输层配置
+    local transport_config=""
+    if [[ "$net" == "ws" ]]; then
+        local ws_headers=""
+        if [[ -n "$host" ]]; then
+            ws_headers=", \"headers\": {\"Host\": \"${host}\"}"
+        fi
+        local ws_path="/"
+        if [[ -n "$path" ]]; then
+            ws_path="$path"
+        fi
+        transport_config=",
+  \"transport\": {
+    \"type\": \"ws\",
+    \"path\": \"${ws_path}\"${ws_headers}
+  }"
+    elif [[ "$net" == "grpc" ]]; then
+        local service_name=$(echo "$json" | jq -r '.path // ""')
+        transport_config=",
+  \"transport\": {
+    \"type\": \"grpc\",
+    \"service_name\": \"${service_name}\"
+  }"
+    elif [[ "$net" == "http" || "$net" == "h2" ]]; then
+        local h2_path="/"
+        [[ -n "$path" ]] && h2_path="$path"
+        local h2_host=""
+        [[ -n "$host" ]] && h2_host=", \"host\": [\"${host}\"]"
+        transport_config=",
+  \"transport\": {
+    \"type\": \"http\",
+    \"path\": \"${h2_path}\"${h2_host}
+  }"
+    fi
+    
+    # 构建 TLS 配置
+    local tls_config=""
+    if [[ "$tls" == "tls" ]]; then
+        local sni_config=""
+        if [[ -n "$sni" ]]; then
+            sni_config=", \"server_name\": \"${sni}\""
+        elif [[ -n "$host" ]]; then
+            sni_config=", \"server_name\": \"${host}\""
+        fi
+        local alpn_config=""
+        if [[ -n "$alpn" ]]; then
+            alpn_config=", \"alpn\": [\"$(echo "$alpn" | sed 's/,/","/g')\"]"
+        fi
+        tls_config=",
+  \"tls\": {
+    \"enabled\": true${sni_config}${alpn_config}
+  }"
+    fi
     
     local tag="relay-vmess-${#RELAY_TAGS[@]}"
     local relay_json="{
@@ -2284,7 +2491,7 @@ parse_vmess_link() {
   \"server_port\": ${port},
   \"uuid\": \"${uuid}\",
   \"alter_id\": ${alterId},
-  \"security\": \"${security}\"
+  \"security\": \"${security}\"${transport_config}${tls_config}
 }"
     local relay_desc
     if [[ -n "$custom_desc" ]]; then
@@ -2418,7 +2625,70 @@ parse_trojan_link() {
     local params=$(echo "$server_port_params" | grep -o '?.*' | sed 's|?||' | cut -d'#' -f1)
     
     local sni=""
-    [[ "$params" =~ sni=([^&]+) ]] && sni="${BASH_REMATCH[1]}"
+    local insecure="false"
+    local net="tcp"
+    local path=""
+    local host=""
+    local fp=""
+    
+    if [[ -n "$params" ]]; then
+        IFS='&' read -ra param_pairs <<< "$params"
+        for pair in "${param_pairs[@]}"; do
+            key="${pair%%=*}"
+            value="${pair#*=}"
+            case "$key" in
+                sni) sni="$value" ;;
+                insecure) insecure="$value" ;;
+                type) net="$value" ;;
+                path) path="$value" ;;
+                host) host="$value" ;;
+                fp) fp="$value" ;;
+            esac
+        done
+    fi
+    
+    # 转换 insecure 为布尔值
+    local insecure_bool="false"
+    [[ "$insecure" == "1" || "$insecure" == "true" ]] && insecure_bool="true"
+    
+    # 构建 TLS 配置
+    local sni_config=""
+    if [[ -n "$sni" ]]; then
+        sni_config=", \"server_name\": \"${sni}\""
+    elif [[ -n "$host" ]]; then
+        sni_config=", \"server_name\": \"${host}\""
+    fi
+    local utls_config=""
+    if [[ -n "$fp" ]]; then
+        utls_config=", \"utls\": {\"enabled\": true, \"fingerprint\": \"${fp}\"}"
+    fi
+    local tls_config=",
+  \"tls\": {
+    \"enabled\": true${sni_config}${utls_config},
+    \"insecure\": ${insecure_bool}
+  }"
+    
+    # 构建传输层配置
+    local transport_config=""
+    if [[ "$net" == "ws" ]]; then
+        local ws_headers=""
+        if [[ -n "$host" ]]; then
+            ws_headers=", \"headers\": {\"Host\": \"${host}\"}"
+        fi
+        local ws_path="/"
+        [[ -n "$path" ]] && ws_path="$path"
+        transport_config=",
+  \"transport\": {
+    \"type\": \"ws\",
+    \"path\": \"${ws_path}\"${ws_headers}
+  }"
+    elif [[ "$net" == "grpc" ]]; then
+        transport_config=",
+  \"transport\": {
+    \"type\": \"grpc\",
+    \"service_name\": \"${path}\"
+  }"
+    fi
     
     local tag="relay-trojan-${#RELAY_TAGS[@]}"
     local relay_json="{
@@ -2426,11 +2696,7 @@ parse_trojan_link() {
   \"tag\": \"${tag}\",
   \"server\": \"${server}\",
   \"server_port\": ${port},
-  \"password\": \"${password}\",
-  \"tls\": {
-    \"enabled\": true,
-    \"server_name\": \"${sni}\"
-  }
+  \"password\": \"${password}\"${tls_config}${transport_config}
 }"
     local relay_desc
     if [[ -n "$custom_desc" ]]; then
@@ -2559,6 +2825,11 @@ parse_anytls_link() {
     local password="$userinfo"
     local sni=""
     local insecure="false"
+    local security="none"
+    local fp=""
+    local pbk=""
+    local sid=""
+    local padding=""
 
     if [[ -n "$params" ]]; then
         IFS='&' read -ra param_pairs <<< "$params"
@@ -2568,6 +2839,11 @@ parse_anytls_link() {
             case "$key" in
                 sni) sni="$value" ;;
                 insecure) insecure="$value" ;;
+                security) security="$value" ;;
+                fp) fp="$value" ;;
+                pbk) pbk="$value" ;;
+                sid) sid="$value" ;;
+                padding) padding="$value" ;;
             esac
         done
     fi
@@ -2576,25 +2852,61 @@ parse_anytls_link() {
     local insecure_bool="false"
     [[ "$insecure" == "1" || "$insecure" == "true" ]] && insecure_bool="true"
 
+    # 构建 TLS 配置
+    local tls_config=""
+    if [[ "$security" == "reality" ]]; then
+        if [[ -z "$pbk" ]]; then
+            print_error "AnyTLS+REALITY 链接缺少公钥 (pbk)"
+            return 1
+        fi
+        local utls_config=""
+        if [[ -n "$fp" ]]; then
+            utls_config=", \"utls\": {\"enabled\": true, \"fingerprint\": \"${fp}\"}"
+        fi
+        tls_config=",
+  \"tls\": {
+    \"enabled\": true,
+    \"server_name\": \"${sni}\"${utls_config},
+    \"reality\": {
+      \"enabled\": true,
+      \"public_key\": \"${pbk}\",
+      \"short_id\": \"${sid}\"
+    }
+  }"
+    else
+        tls_config=",
+  \"tls\": {
+    \"enabled\": true,
+    \"server_name\": \"${sni}\",
+    \"insecure\": ${insecure_bool}
+  }"
+    fi
+
+    # 构建 padding 配置
+    local padding_config=""
+    if [[ -n "$padding" ]]; then
+        padding_config=",
+  \"padding_scheme\": [${padding}]"
+    fi
+
     local tag="relay-anytls-${#RELAY_TAGS[@]}"
     local relay_json="{
   \"type\": \"anytls\",
   \"tag\": \"${tag}\",
   \"server\": \"${server}\",
   \"server_port\": ${port},
-  \"password\": \"${password}\",
-  \"tls\": {
-    \"enabled\": true,
-    \"server_name\": \"${sni}\",
-    \"insecure\": ${insecure_bool}
-  }
+  \"password\": \"${password}\"${padding_config}${tls_config}
 }"
 
     local relay_desc
     if [[ -n "$custom_desc" ]]; then
         relay_desc="$custom_desc"
     else
-        relay_desc="AnyTLS ${server}:${port} (SNI: ${sni})"
+        if [[ "$security" == "reality" ]]; then
+            relay_desc="AnyTLS+REALITY ${server}:${port} (SNI: ${sni})"
+        else
+            relay_desc="AnyTLS ${server}:${port} (SNI: ${sni})"
+        fi
     fi
 
     RELAY_TAGS+=("$tag")
@@ -3944,7 +4256,13 @@ delete_all_nodes() {
     local dns_strategy="prefer_ipv4"
     [[ "$OUTBOUND_IP_MODE" == "ipv6" ]] && dns_strategy="prefer_ipv6"
     [[ "$OUTBOUND_IP_MODE" == "ipv6_only" ]] && dns_strategy="ipv6_only"
-    
+
+    local dns_domain_resolver=""
+    if [[ $SB_GE_1_12 -eq 1 ]]; then
+        dns_domain_resolver=",
+    \"default_domain_resolver\": \"local\""
+    fi
+
     cat > ${CONFIG_FILE} << EOFCONFIG
 {
   "log": {
@@ -3964,7 +4282,7 @@ delete_all_nodes() {
       }
     ],
     "final": "remote",
-    "strategy": "${dns_strategy}"
+    "strategy": "${dns_strategy}"${dns_domain_resolver}
   },
   "inbounds": [],
   "outbounds": [
@@ -4056,10 +4374,17 @@ generate_config() {
     fi
     outbounds_array+=("$direct_outbound")
     
-    # ipv6_only 模式下添加 block outbound 用于阻断 IPv4 出站
+    # ipv6_only 模式下阻断 IPv4 出站
+    # 注意: sing-box 1.13.0+ 已移除 block outbound，改用 route rule action
     if [[ "$OUTBOUND_IP_MODE" == "ipv6_only" ]]; then
-        local block_outbound='{"type": "block", "tag": "block-ipv4"}'
-        outbounds_array+=("$block_outbound")
+        if [[ $SB_GE_1_13 -eq 1 ]]; then
+            # 1.13.0+ 不添加 block outbound，在路由规则中用 action 处理
+            :
+        else
+            # 旧版本使用 block outbound
+            local block_outbound='{"type": "block", "tag": "block-ipv4"}'
+            outbounds_array+=("$block_outbound")
+        fi
     fi
     
     # 组合 outbounds
@@ -4076,10 +4401,21 @@ generate_config() {
     # 构建路由规则
     local route_rules=()
     local has_relay=0
-    
+
+    # 添加协议嗅探规则（1.13.0+ 使用 route rule action，旧版使用 inbound sniff 字段）
+    if [[ $SB_GE_1_13 -eq 1 ]]; then
+        route_rules+=('{"action":"sniff","protocols":["http","tls","quic"]}')
+        has_relay=1
+    fi
+
     # ipv6_only 模式下，添加规则阻断所有 IPv4 出站流量
     if [[ "$OUTBOUND_IP_MODE" == "ipv6_only" ]]; then
-        route_rules+=('{"ip_cidr":["0.0.0.0/0"],"outbound":"block-ipv4"}')
+        if [[ $SB_GE_1_13 -eq 1 ]]; then
+            # 1.13.0+ 使用 route rule action
+            route_rules+=('{"ip_cidr":["0.0.0.0/0"],"action":"block"}')
+        else
+            route_rules+=('{"ip_cidr":["0.0.0.0/0"],"outbound":"block-ipv4"}')
+        fi
         has_relay=1
     fi
     
@@ -4152,83 +4488,65 @@ generate_config() {
     
     # 组合路由配置
     local route_json
+    local route_domain_resolver=""
+    if [[ $SB_GE_1_12 -eq 1 ]]; then
+        route_domain_resolver=",\"default_domain_resolver\":\"local\""
+    else
+        route_domain_resolver=",\"default_domain_resolver\":\"local\""
+    fi
     if [[ $has_relay -eq 1 ]]; then
         route_json="{\"rules\":["
         for i in "${!route_rules[@]}"; do
             [[ $i -gt 0 ]] && route_json+=","
             route_json+="${route_rules[$i]}"
         done
-        route_json+="],\"final\":\"direct\",\"default_domain_resolver\":\"local\"}"
+        route_json+="],\"final\":\"direct\"${route_domain_resolver}}"
     else
-        route_json="{\"final\":\"direct\",\"default_domain_resolver\":\"local\"}"
+        route_json="{\"final\":\"direct\"${route_domain_resolver}}"
     fi
     
     # 构建 DNS 配置（根据出站 IP 模式）
+    # sing-box 1.12.0+ 重构了 DNS 配置，1.14.0 将移除旧格式兼容
     local dns_json
-    if [[ "$OUTBOUND_IP_MODE" == "ipv6_only" ]]; then
-        dns_json='{
-    "servers": [
+    local dns_strategy="prefer_ipv4"
+    [[ "$OUTBOUND_IP_MODE" == "ipv6" ]] && dns_strategy="prefer_ipv6"
+    [[ "$OUTBOUND_IP_MODE" == "ipv6_only" ]] && dns_strategy="ipv6_only"
+
+    if [[ $SB_GE_1_12 -eq 1 ]]; then
+        # 1.12.0+ 新 DNS 格式（兼容 1.14.0）
+        dns_json="{
+    \"servers\": [
       {
-        "tag": "local",
-        "type": "local"
+        \"tag\": \"local\",
+        \"type\": \"local\"
       },
       {
-        "tag": "remote",
-        "type": "udp",
-        "server": "8.8.8.8"
+        \"tag\": \"remote\",
+        \"type\": \"udp\",
+        \"server\": \"8.8.8.8\"
       }
     ],
-    "final": "remote",
-    "strategy": "ipv6_only"
-  }'
-    elif [[ "$OUTBOUND_IP_MODE" == "ipv6" ]]; then
-        dns_json='{
-    "servers": [
-      {
-        "tag": "local",
-        "type": "local"
-      },
-      {
-        "tag": "remote",
-        "type": "udp",
-        "server": "8.8.8.8"
-      }
-    ],
-    "final": "remote",
-    "strategy": "prefer_ipv6"
-  }'
-    elif [[ "$OUTBOUND_IP_MODE" == "dual" ]]; then
-        dns_json='{
-    "servers": [
-      {
-        "tag": "local",
-        "type": "local"
-      },
-      {
-        "tag": "remote",
-        "type": "udp",
-        "server": "8.8.8.8"
-      }
-    ],
-    "final": "remote",
-    "strategy": "prefer_ipv4"
-  }'
+    \"final\": \"remote\",
+    \"strategy\": \"${dns_strategy}\",
+    \"default_domain_resolver\": \"local\"
+  }"
     else
-        dns_json='{
-    "servers": [
+        # 旧版本 DNS 格式
+        dns_json="{
+    \"servers\": [
       {
-        "tag": "local",
-        "type": "local"
+        \"tag\": \"local\",
+        \"type\": \"local\"
       },
       {
-        "tag": "remote",
-        "type": "udp",
-        "server": "8.8.8.8"
+        \"tag\": \"remote\",
+        \"type\": \"udp\",
+        \"server\": \"8.8.8.8\"
       }
     ],
-    "final": "remote",
-    "strategy": "prefer_ipv4"
-  }'
+    \"final\": \"remote\",
+    \"strategy\": \"${dns_strategy}\"
+  }"
     fi
     
     cat > ${CONFIG_FILE} << EOFCONFIG
@@ -4259,8 +4577,21 @@ start_svc() {
         echo -e "${YELLOW}错误详情:${NC}"
         echo "$check_output"
         echo ""
-        echo -e "${YELLOW}配置文件内容:${NC}"
-        cat "${CONFIG_FILE}"
+        # 自动回滚到备份配置
+        if [[ -f "${CONFIG_FILE}.bak" ]]; then
+            print_warning "正在自动回滚到备份配置..."
+            cp "${CONFIG_FILE}.bak" "${CONFIG_FILE}"
+            print_success "已回滚到备份配置"
+            # 尝试用备份配置重启
+            if "${INSTALL_DIR}/sing-box" check -c "${CONFIG_FILE}" >/dev/null 2>&1; then
+                print_info "使用备份配置重启服务..."
+                svc_restart
+                sleep 2
+                if svc_is_active; then
+                    print_success "服务已使用备份配置恢复运行"
+                fi
+            fi
+        fi
         return 1
     fi
     
@@ -5294,6 +5625,12 @@ main() {
         exit 1
     fi
     
+    # DEBUG 模式支持: DEBUG=1 ./install.sh
+    if [[ "${DEBUG:-0}" -eq 1 ]]; then
+        set -x
+        print_warning "DEBUG 模式已启用，所有命令将被追踪"
+    fi
+    
     # 如果脚本不在磁盘上（如 curl|bash 方式运行），先保存到磁盘再重新执行
     local sb_script="/etc/sing-box/install.sh"
     if [[ ! -f "${SCRIPT_PATH}" ]]; then
@@ -5333,6 +5670,7 @@ main() {
     
     detect_system
     install_singbox
+    detect_singbox_version
     mkdir -p /etc/sing-box
     gen_keys
     
