@@ -151,7 +151,7 @@ ip_config_menu() {
 
 # 通用端口修改逻辑
 # 参数: array_idx tag port tag_prefix
-# 设置全局变量: MODIFY_NEW_TAG, MODIFY_NEW_PORT
+# 通过 echo 返回 "new_tag new_port"，失败返回空
 _modify_port_common() {
     local array_idx="$1"
     local tag="$2"
@@ -173,9 +173,8 @@ _modify_port_common() {
     local new_tag=$(modify_port "$tag" "$tag_prefix" "$new_port")
     INBOUND_TAGS[$array_idx]="$new_tag"
     INBOUND_PORTS[$array_idx]="$new_port"
-    MODIFY_NEW_TAG="$new_tag"
-    MODIFY_NEW_PORT="$new_port"
     print_success "端口已修改为 ${new_port}"
+    echo "${new_tag} ${new_port}"
     return 0
 }
 
@@ -232,7 +231,7 @@ modify_node_generic() {
     local current_sni="${INBOUND_SNIS[$array_idx]}"
     local proto="${INBOUND_PROTOS[$array_idx]}"
 
-    # 调用协议特定的修改菜单
+    # 调用协议特定的修改菜单（通过 echo 返回 config_changed 值）
     local config_changed=0
     case "$proto" in
         Reality)        config_changed=$(_modify_menu_Reality "$array_idx" "$tag" "$port" "$current_sni" "$proto") ;;
@@ -268,9 +267,10 @@ _modify_menu_Reality() {
 
         case $mod_choice in
             1)
-                if _modify_port_common "$array_idx" "$tag" "$port" "vless-in-"; then
-                    tag="$MODIFY_NEW_TAG"
-                    port="$MODIFY_NEW_PORT"
+                local port_result
+                port_result=$(_modify_port_common "$array_idx" "$tag" "$port" "vless-in-")
+                if [[ -n "$port_result" ]]; then
+                    read -r tag port <<< "$port_result"
                     config_changed=1
                 fi
                 ;;
@@ -305,7 +305,7 @@ _modify_menu_Reality() {
         esac
     done
 
-    return $config_changed
+    echo "$config_changed"
 }
 
 # ==================== Hysteria2 修改菜单 ====================
@@ -325,9 +325,10 @@ _modify_menu_Hysteria2() {
 
         case $mod_choice in
             1)
-                if _modify_port_common "$array_idx" "$tag" "$port" "hy2-in-"; then
-                    tag="$MODIFY_NEW_TAG"
-                    port="$MODIFY_NEW_PORT"
+                local port_result
+                port_result=$(_modify_port_common "$array_idx" "$tag" "$port" "hy2-in-")
+                if [[ -n "$port_result" ]]; then
+                    read -r tag port <<< "$port_result"
                     config_changed=1
                 fi
                 ;;
@@ -363,7 +364,7 @@ _modify_menu_Hysteria2() {
         esac
     done
 
-    return $config_changed
+    echo "$config_changed"
 }
 
 # ==================== SOCKS5 修改菜单 ====================
@@ -385,9 +386,10 @@ _modify_menu_SOCKS5() {
 
         case $mod_choice in
             1)
-                if _modify_port_common "$array_idx" "$tag" "$port" "socks-in-"; then
-                    tag="$MODIFY_NEW_TAG"
-                    port="$MODIFY_NEW_PORT"
+                local port_result
+                port_result=$(_modify_port_common "$array_idx" "$tag" "$port" "socks-in-")
+                if [[ -n "$port_result" ]]; then
+                    read -r tag port <<< "$port_result"
                     config_changed=1
                 fi
                 ;;
@@ -416,7 +418,7 @@ _modify_menu_SOCKS5() {
         esac
     done
 
-    return $config_changed
+    echo "$config_changed"
 }
 
 # ==================== ShadowTLS 修改菜单 ====================
@@ -503,7 +505,7 @@ _modify_menu_ShadowTLS() {
         esac
     done
 
-    return $config_changed
+    echo "$config_changed"
 }
 
 # ==================== HTTPS 修改菜单 ====================
@@ -522,9 +524,10 @@ _modify_menu_HTTPS() {
 
         case $mod_choice in
             1)
-                if _modify_port_common "$array_idx" "$tag" "$port" "vless-tls-in-"; then
-                    tag="$MODIFY_NEW_TAG"
-                    port="$MODIFY_NEW_PORT"
+                local port_result
+                port_result=$(_modify_port_common "$array_idx" "$tag" "$port" "vless-tls-in-")
+                if [[ -n "$port_result" ]]; then
+                    read -r tag port <<< "$port_result"
                     config_changed=1
                 fi
                 ;;
@@ -556,7 +559,7 @@ _modify_menu_HTTPS() {
         esac
     done
 
-    return $config_changed
+    echo "$config_changed"
 }
 
 # ==================== AnyTLS 修改菜单 ====================
@@ -588,9 +591,10 @@ _modify_menu_AnyTLS() {
                 else
                     new_tag_prefix="anytls-in-"
                 fi
-                if _modify_port_common "$array_idx" "$tag" "$port" "$new_tag_prefix"; then
-                    tag="$MODIFY_NEW_TAG"
-                    port="$MODIFY_NEW_PORT"
+                local port_result
+                port_result=$(_modify_port_common "$array_idx" "$tag" "$port" "$new_tag_prefix")
+                if [[ -n "$port_result" ]]; then
+                    read -r tag port <<< "$port_result"
                     config_changed=1
                 fi
                 ;;
@@ -631,7 +635,7 @@ _modify_menu_AnyTLS() {
         esac
     done
 
-    return $config_changed
+    echo "$config_changed"
 }
 
 # ==================== 节点修改入口函数 ====================
