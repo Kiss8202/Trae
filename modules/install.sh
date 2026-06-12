@@ -15,7 +15,9 @@ install_singbox() {
         print_info "缺少依赖: ${missing_deps[*]}，开始安装..."
         if [[ $ALPINE -eq 1 ]]; then
             for pkg in curl wget jq openssl util-linux coreutils gcompat libexecinfo; do
-                apk add --no-cache "$pkg" >/dev/null 2>&1
+                if ! apk add --no-cache "$pkg" >/dev/null 2>&1; then
+                    print_warning "包 ${pkg} 安装失败，继续尝试其他包..."
+                fi
                 sleep 0.5
             done
         else

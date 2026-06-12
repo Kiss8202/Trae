@@ -899,10 +899,15 @@ $orig_idx|$route"
 
 # ==================== 主循环 ====================
 main_menu() {
+    local config_mtime=0
     while true; do
-        # 每次显示菜单前，从配置文件重新加载节点信息、中转配置和 IP 配置
+        # 只在配置文件变化时重新加载，避免每次循环都解析 JSON
         if [[ -f "${CONFIG_FILE}" ]]; then
-            load_inbounds_from_config
+            local current_mtime=$(stat -c %Y "${CONFIG_FILE}" 2>/dev/null || echo 0)
+            if [[ $current_mtime -ne $config_mtime ]]; then
+                load_inbounds_from_config
+                config_mtime=$current_mtime
+            fi
         fi
         load_relays_from_file
         load_ip_config
@@ -973,8 +978,8 @@ setup_sb_shortcut() {
     fi
 
     cat > /usr/local/bin/sb << EOSB
-#!/bin/sh
-bash "${SCRIPT_PATH}" "\$@"
+#!/bin/bash
+"${SCRIPT_PATH}" "\$@"
 EOSB
 
     chmod +x /usr/local/bin/sb

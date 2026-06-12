@@ -147,73 +147,132 @@ ip_config_menu() {
     done
 }
 
-# ==================== Reality 节点修改 ====================
-modify_reality_node() {
+# ==================== 通用节点修改框架 ====================
+
+# 通用端口修改逻辑
+# 参数: array_idx tag port tag_prefix
+# 设置全局变量: MODIFY_NEW_TAG, MODIFY_NEW_PORT
+_modify_port_common() {
+    local array_idx="$1"
+    local tag="$2"
+    local port="$3"
+    local tag_prefix="$4"
+
+    echo -e "${YELLOW}新端口 (留空随机分配)${NC}"
+    read -p "端口: " new_port
+    if [[ -z "$new_port" ]]; then
+        new_port=$(get_random_free_port)
+        [[ -z "$new_port" ]] && { print_error "无法获取随机端口"; return 1; }
+    fi
+    if ! [[ "$new_port" =~ ^[0-9]+$ ]] || (( new_port < 1 || new_port > 65535 )); then
+        print_error "端口无效"; return 1
+    fi
+    if check_port_in_use "$new_port" && [[ "$new_port" != "$port" ]]; then
+        print_warning "端口 ${new_port} 已被占用"; return 1
+    fi
+    local new_tag=$(modify_port "$tag" "$tag_prefix" "$new_port")
+    INBOUND_TAGS[$array_idx]="$new_tag"
+    INBOUND_PORTS[$array_idx]="$new_port"
+    MODIFY_NEW_TAG="$new_tag"
+    MODIFY_NEW_PORT="$new_port"
+    print_success "端口已修改为 ${new_port}"
+    return 0
+}
+
+# 通用节点修改框架
+# 参数: proto_name [proto_name2...]  (INBOUND_PROTOS 匹配值，支持多个)
+# 环境变量: _GENERIC_SHOW_SNI=0 时不显示SNI, _GENERIC_SHOW_PROTO=1 时额外显示协议名
+modify_node_generic() {
+    local proto_names=("$@")
+
     if [[ ${#INBOUND_TAGS[@]} -eq 0 ]]; then
         print_warning "当前没有可修改的节点"
         return 1
     fi
-    
+
+    # 列出匹配协议的节点
+    local display_name="${proto_names[0]}"
     echo ""
-    echo -e "${CYAN}当前 Reality 节点:${NC}"
-    local reality_nodes=()
+    echo -e "${CYAN}当前 ${display_name} 节点:${NC}"
+    local matched_nodes=()
     for i in "${!INBOUND_TAGS[@]}"; do
-        if [[ "${INBOUND_PROTOS[$i]}" == "Reality" ]]; then
-            reality_nodes+=("$i")
-            echo -e "  ${GREEN}[${#reality_nodes[@]}]${NC} 端口: ${INBOUND_PORTS[$i]}, SNI: ${INBOUND_SNIS[$i]}, TAG: ${INBOUND_TAGS[$i]}"
-        fi
+        local proto="${INBOUND_PROTOS[$i]}"
+        for pn in "${proto_names[@]}"; do
+            if [[ "$proto" == "$pn" ]]; then
+                matched_nodes+=("$i")
+                if [[ "${_GENERIC_SHOW_PROTO:-0}" -eq 1 ]]; then
+                    echo -e "  ${GREEN}[${#matched_nodes[@]}]${NC} 协议: ${proto}, 端口: ${INBOUND_PORTS[$i]}, SNI: ${INBOUND_SNIS[$i]}, TAG: ${INBOUND_TAGS[$i]}"
+                elif [[ "${_GENERIC_SHOW_SNI:-1}" -eq 0 ]]; then
+                    echo -e "  ${GREEN}[${#matched_nodes[@]}]${NC} 端口: ${INBOUND_PORTS[$i]}, TAG: ${INBOUND_TAGS[$i]}"
+                else
+                    echo -e "  ${GREEN}[${#matched_nodes[@]}]${NC} 端口: ${INBOUND_PORTS[$i]}, SNI: ${INBOUND_SNIS[$i]}, TAG: ${INBOUND_TAGS[$i]}"
+                fi
+                break
+            fi
+        done
     done
-    
-    if [[ ${#reality_nodes[@]} -eq 0 ]]; then
-        print_warning "没有找到 Reality 节点"
+
+    if [[ ${#matched_nodes[@]} -eq 0 ]]; then
+        print_warning "没有找到 ${display_name} 节点"
         return 1
     fi
-    
+
+    # 选择节点
     read -p "请选择要修改的节点序号 (0 取消): " node_choice
     [[ "$node_choice" == "0" ]] && return 0
     local idx=$((10#$node_choice-1))
-    if ! [[ "$node_choice" =~ ^[0-9]+$ ]] || (( idx < 0 || idx >= ${#reality_nodes[@]} )); then
+    if ! [[ "$node_choice" =~ ^[0-9]+$ ]] || (( idx < 0 || idx >= ${#matched_nodes[@]} )); then
         print_error "序号无效"
         return 1
     fi
-    
-    local array_idx="${reality_nodes[$idx]}"
+
+    local array_idx="${matched_nodes[$idx]}"
     local tag="${INBOUND_TAGS[$array_idx]}"
     local port="${INBOUND_PORTS[$array_idx]}"
-    
+    local current_sni="${INBOUND_SNIS[$array_idx]}"
+    local proto="${INBOUND_PROTOS[$array_idx]}"
+
+    # 调用协议特定的修改菜单
     local config_changed=0
-    
+    case "$proto" in
+        Reality)        config_changed=$(_modify_menu_Reality "$array_idx" "$tag" "$port" "$current_sni" "$proto") ;;
+        Hysteria2)      config_changed=$(_modify_menu_Hysteria2 "$array_idx" "$tag" "$port" "$current_sni" "$proto") ;;
+        SOCKS5)         config_changed=$(_modify_menu_SOCKS5 "$array_idx" "$tag" "$port" "$current_sni" "$proto") ;;
+        "ShadowTLS v3") config_changed=$(_modify_menu_ShadowTLS "$array_idx" "$tag" "$port" "$current_sni" "$proto") ;;
+        HTTPS)          config_changed=$(_modify_menu_HTTPS "$array_idx" "$tag" "$port" "$current_sni" "$proto") ;;
+        AnyTLS|AnyTLS+REALITY) config_changed=$(_modify_menu_AnyTLS "$array_idx" "$tag" "$port" "$current_sni" "$proto") ;;
+    esac
+
+    # 修改完成后统一处理
+    if [[ $config_changed -eq 1 ]]; then
+        load_inbounds_from_config
+        generate_config && start_svc
+        regenerate_links_from_config
+    fi
+}
+
+# ==================== Reality 修改菜单 ====================
+_modify_menu_Reality() {
+    local array_idx="$1" tag="$2" port="$3" current_sni="$4" proto="$5"
+    local config_changed=0
+
     while true; do
         echo ""
         echo -e "${CYAN}修改 Reality 节点 ${tag}:${NC}"
         echo -e "  ${GREEN}[1]${NC} 修改端口 (当前: ${port})"
-        echo -e "  ${GREEN}[2]${NC} 修改 SNI (当前: ${INBOUND_SNIS[$array_idx]})"
+        echo -e "  ${GREEN}[2]${NC} 修改 SNI (当前: ${current_sni})"
         echo -e "  ${GREEN}[3]${NC} 重新生成 UUID"
         echo -e "  ${GREEN}[4]${NC} 重新生成 Short ID"
         echo -e "  ${GREEN}[0]${NC} 返回"
         read -p "请选择: " mod_choice
-        
+
         case $mod_choice in
             1)
-                echo -e "${YELLOW}新端口 (留空随机分配)${NC}"
-                read -p "端口: " new_port
-                if [[ -z "$new_port" ]]; then
-                    new_port=$(get_random_free_port)
-                    [[ -z "$new_port" ]] && { print_error "无法获取随机端口"; continue; }
+                if _modify_port_common "$array_idx" "$tag" "$port" "vless-in-"; then
+                    tag="$MODIFY_NEW_TAG"
+                    port="$MODIFY_NEW_PORT"
+                    config_changed=1
                 fi
-                if ! [[ "$new_port" =~ ^[0-9]+$ ]] || (( new_port < 1 || new_port > 65535 )); then
-                    print_error "端口无效"; continue
-                fi
-                if check_port_in_use "$new_port" && [[ "$new_port" != "$port" ]]; then
-                    print_warning "端口 ${new_port} 已被占用"; continue
-                fi
-                local new_tag=$(modify_port "$tag" "vless-in-" "$new_port")
-                INBOUND_TAGS[$array_idx]="$new_tag"
-                INBOUND_PORTS[$array_idx]="$new_port"
-                tag="$new_tag"
-                port="$new_port"
-                config_changed=1
-                print_success "端口已修改为 ${new_port}"
                 ;;
             2)
                 echo -e "${YELLOW}新 SNI (留空随机)${NC}"
@@ -225,6 +284,7 @@ modify_reality_node() {
                 jq_update_config --arg tag "$tag" --arg sni "$new_sni" \
                     '(.inbounds[] | select(.tag == $tag)) |= (.tls.server_name = $sni | .tls.reality.handshake.server = $sni)'
                 INBOUND_SNIS[$array_idx]="$new_sni"
+                current_sni="$new_sni"
                 config_changed=1
                 print_success "SNI 已修改为 ${new_sni}"
                 ;;
@@ -244,51 +304,15 @@ modify_reality_node() {
                 ;;
         esac
     done
-    
-    if [[ $config_changed -eq 1 ]]; then
-        load_inbounds_from_config
-        generate_config && start_svc
-        regenerate_links_from_config
-    fi
+
+    return $config_changed
 }
 
-# ==================== Hysteria2 节点修改 ====================
-modify_hysteria2_node() {
-    if [[ ${#INBOUND_TAGS[@]} -eq 0 ]]; then
-        print_warning "当前没有可修改的节点"
-        return 1
-    fi
-    
-    echo ""
-    echo -e "${CYAN}当前 Hysteria2 节点:${NC}"
-    local hy2_nodes=()
-    for i in "${!INBOUND_TAGS[@]}"; do
-        if [[ "${INBOUND_PROTOS[$i]}" == "Hysteria2" ]]; then
-            hy2_nodes+=("$i")
-            echo -e "  ${GREEN}[${#hy2_nodes[@]}]${NC} 端口: ${INBOUND_PORTS[$i]}, SNI: ${INBOUND_SNIS[$i]}, TAG: ${INBOUND_TAGS[$i]}"
-        fi
-    done
-    
-    if [[ ${#hy2_nodes[@]} -eq 0 ]]; then
-        print_warning "没有找到 Hysteria2 节点"
-        return 1
-    fi
-    
-    read -p "请选择要修改的节点序号 (0 取消): " node_choice
-    [[ "$node_choice" == "0" ]] && return 0
-    local idx=$((10#$node_choice-1))
-    if ! [[ "$node_choice" =~ ^[0-9]+$ ]] || (( idx < 0 || idx >= ${#hy2_nodes[@]} )); then
-        print_error "序号无效"
-        return 1
-    fi
-    
-    local array_idx="${hy2_nodes[$idx]}"
-    local tag="${INBOUND_TAGS[$array_idx]}"
-    local port="${INBOUND_PORTS[$array_idx]}"
-    local current_sni="${INBOUND_SNIS[$array_idx]}"
-    
+# ==================== Hysteria2 修改菜单 ====================
+_modify_menu_Hysteria2() {
+    local array_idx="$1" tag="$2" port="$3" current_sni="$4" proto="$5"
     local config_changed=0
-    
+
     while true; do
         echo ""
         echo -e "${CYAN}修改 Hysteria2 节点 ${tag}:${NC}"
@@ -298,28 +322,14 @@ modify_hysteria2_node() {
         echo -e "  ${GREEN}[4]${NC} 重新生成混淆密码"
         echo -e "  ${GREEN}[0]${NC} 返回"
         read -p "请选择: " mod_choice
-        
+
         case $mod_choice in
             1)
-                echo -e "${YELLOW}新端口 (留空随机分配)${NC}"
-                read -p "端口: " new_port
-                if [[ -z "$new_port" ]]; then
-                    new_port=$(get_random_free_port)
-                    [[ -z "$new_port" ]] && { print_error "无法获取随机端口"; continue; }
+                if _modify_port_common "$array_idx" "$tag" "$port" "hy2-in-"; then
+                    tag="$MODIFY_NEW_TAG"
+                    port="$MODIFY_NEW_PORT"
+                    config_changed=1
                 fi
-                if ! [[ "$new_port" =~ ^[0-9]+$ ]] || (( new_port < 1 || new_port > 65535 )); then
-                    print_error "端口无效"; continue
-                fi
-                if check_port_in_use "$new_port" && [[ "$new_port" != "$port" ]]; then
-                    print_warning "端口 ${new_port} 已被占用"; continue
-                fi
-                local new_tag=$(modify_port "$tag" "hy2-in-" "$new_port")
-                INBOUND_TAGS[$array_idx]="$new_tag"
-                INBOUND_PORTS[$array_idx]="$new_port"
-                tag="$new_tag"
-                port="$new_port"
-                config_changed=1
-                print_success "端口已修改为 ${new_port}"
                 ;;
             2)
                 echo -e "${YELLOW}新 SNI (留空随机)${NC}"
@@ -352,53 +362,18 @@ modify_hysteria2_node() {
                 ;;
         esac
     done
-    
-    if [[ $config_changed -eq 1 ]]; then
-        load_inbounds_from_config
-        generate_config && start_svc
-        regenerate_links_from_config
-    fi
+
+    return $config_changed
 }
 
-# ==================== SOCKS5 节点修改 ====================
-modify_socks5_node() {
-    if [[ ${#INBOUND_TAGS[@]} -eq 0 ]]; then
-        print_warning "当前没有可修改的节点"
-        return 1
-    fi
-    
-    echo ""
-    echo -e "${CYAN}当前 SOCKS5 节点:${NC}"
-    local socks_nodes=()
-    for i in "${!INBOUND_TAGS[@]}"; do
-        if [[ "${INBOUND_PROTOS[$i]}" == "SOCKS5" ]]; then
-            socks_nodes+=("$i")
-            echo -e "  ${GREEN}[${#socks_nodes[@]}]${NC} 端口: ${INBOUND_PORTS[$i]}, TAG: ${INBOUND_TAGS[$i]}"
-        fi
-    done
-    
-    if [[ ${#socks_nodes[@]} -eq 0 ]]; then
-        print_warning "没有找到 SOCKS5 节点"
-        return 1
-    fi
-    
-    read -p "请选择要修改的节点序号 (0 取消): " node_choice
-    [[ "$node_choice" == "0" ]] && return 0
-    local idx=$((10#$node_choice-1))
-    if ! [[ "$node_choice" =~ ^[0-9]+$ ]] || (( idx < 0 || idx >= ${#socks_nodes[@]} )); then
-        print_error "序号无效"
-        return 1
-    fi
-    
-    local array_idx="${socks_nodes[$idx]}"
-    local tag="${INBOUND_TAGS[$array_idx]}"
-    local port="${INBOUND_PORTS[$array_idx]}"
-    
+# ==================== SOCKS5 修改菜单 ====================
+_modify_menu_SOCKS5() {
+    local array_idx="$1" tag="$2" port="$3" current_sni="$4" proto="$5"
+    local config_changed=0
+
     # 读取当前用户名
     local current_user=$(jq -r --arg tag "$tag" '(.inbounds[] | select(.tag == $tag)).users[0].username // ""' "${CONFIG_FILE}")
-    
-    local config_changed=0
-    
+
     while true; do
         echo ""
         echo -e "${CYAN}修改 SOCKS5 节点 ${tag}:${NC}"
@@ -407,28 +382,14 @@ modify_socks5_node() {
         echo -e "  ${GREEN}[3]${NC} 重新生成密码"
         echo -e "  ${GREEN}[0]${NC} 返回"
         read -p "请选择: " mod_choice
-        
+
         case $mod_choice in
             1)
-                echo -e "${YELLOW}新端口 (留空随机分配)${NC}"
-                read -p "端口: " new_port
-                if [[ -z "$new_port" ]]; then
-                    new_port=$(get_random_free_port)
-                    [[ -z "$new_port" ]] && { print_error "无法获取随机端口"; continue; }
+                if _modify_port_common "$array_idx" "$tag" "$port" "socks-in-"; then
+                    tag="$MODIFY_NEW_TAG"
+                    port="$MODIFY_NEW_PORT"
+                    config_changed=1
                 fi
-                if ! [[ "$new_port" =~ ^[0-9]+$ ]] || (( new_port < 1 || new_port > 65535 )); then
-                    print_error "端口无效"; continue
-                fi
-                if check_port_in_use "$new_port" && [[ "$new_port" != "$port" ]]; then
-                    print_warning "端口 ${new_port} 已被占用"; continue
-                fi
-                local new_tag=$(modify_port "$tag" "socks-in-" "$new_port")
-                INBOUND_TAGS[$array_idx]="$new_tag"
-                INBOUND_PORTS[$array_idx]="$new_port"
-                tag="$new_tag"
-                port="$new_port"
-                config_changed=1
-                print_success "端口已修改为 ${new_port}"
                 ;;
             2)
                 echo -e "${YELLOW}新用户名 (留空随机生成)${NC}"
@@ -454,51 +415,15 @@ modify_socks5_node() {
                 ;;
         esac
     done
-    
-    if [[ $config_changed -eq 1 ]]; then
-        load_inbounds_from_config
-        generate_config && start_svc
-        regenerate_links_from_config
-    fi
+
+    return $config_changed
 }
 
-# ==================== ShadowTLS 节点修改 ====================
-modify_shadowtls_node() {
-    if [[ ${#INBOUND_TAGS[@]} -eq 0 ]]; then
-        print_warning "当前没有可修改的节点"
-        return 1
-    fi
-    
-    echo ""
-    echo -e "${CYAN}当前 ShadowTLS 节点:${NC}"
-    local stls_nodes=()
-    for i in "${!INBOUND_TAGS[@]}"; do
-        if [[ "${INBOUND_PROTOS[$i]}" == "ShadowTLS v3" ]]; then
-            stls_nodes+=("$i")
-            echo -e "  ${GREEN}[${#stls_nodes[@]}]${NC} 端口: ${INBOUND_PORTS[$i]}, SNI: ${INBOUND_SNIS[$i]}, TAG: ${INBOUND_TAGS[$i]}"
-        fi
-    done
-    
-    if [[ ${#stls_nodes[@]} -eq 0 ]]; then
-        print_warning "没有找到 ShadowTLS 节点"
-        return 1
-    fi
-    
-    read -p "请选择要修改的节点序号 (0 取消): " node_choice
-    [[ "$node_choice" == "0" ]] && return 0
-    local idx=$((10#$node_choice-1))
-    if ! [[ "$node_choice" =~ ^[0-9]+$ ]] || (( idx < 0 || idx >= ${#stls_nodes[@]} )); then
-        print_error "序号无效"
-        return 1
-    fi
-    
-    local array_idx="${stls_nodes[$idx]}"
-    local tag="${INBOUND_TAGS[$array_idx]}"
-    local port="${INBOUND_PORTS[$array_idx]}"
-    local current_sni="${INBOUND_SNIS[$array_idx]}"
-    
+# ==================== ShadowTLS 修改菜单 ====================
+_modify_menu_ShadowTLS() {
+    local array_idx="$1" tag="$2" port="$3" current_sni="$4" proto="$5"
     local config_changed=0
-    
+
     while true; do
         echo ""
         echo -e "${CYAN}修改 ShadowTLS 节点 ${tag}:${NC}"
@@ -508,9 +433,10 @@ modify_shadowtls_node() {
         echo -e "  ${GREEN}[4]${NC} 重新生成 SS 密码"
         echo -e "  ${GREEN}[0]${NC} 返回"
         read -p "请选择: " mod_choice
-        
+
         case $mod_choice in
             1)
+                # ShadowTLS 端口修改特殊：需要同时修改 shadowsocks tag
                 echo -e "${YELLOW}新端口 (留空随机分配)${NC}"
                 read -p "端口: " new_port
                 if [[ -z "$new_port" ]]; then
@@ -576,51 +502,15 @@ modify_shadowtls_node() {
                 ;;
         esac
     done
-    
-    if [[ $config_changed -eq 1 ]]; then
-        load_inbounds_from_config
-        generate_config && start_svc
-        regenerate_links_from_config
-    fi
+
+    return $config_changed
 }
 
-# ==================== HTTPS 节点修改 ====================
-modify_https_node() {
-    if [[ ${#INBOUND_TAGS[@]} -eq 0 ]]; then
-        print_warning "当前没有可修改的节点"
-        return 1
-    fi
-    
-    echo ""
-    echo -e "${CYAN}当前 HTTPS 节点:${NC}"
-    local https_nodes=()
-    for i in "${!INBOUND_TAGS[@]}"; do
-        if [[ "${INBOUND_PROTOS[$i]}" == "HTTPS" ]]; then
-            https_nodes+=("$i")
-            echo -e "  ${GREEN}[${#https_nodes[@]}]${NC} 端口: ${INBOUND_PORTS[$i]}, SNI: ${INBOUND_SNIS[$i]}, TAG: ${INBOUND_TAGS[$i]}"
-        fi
-    done
-    
-    if [[ ${#https_nodes[@]} -eq 0 ]]; then
-        print_warning "没有找到 HTTPS 节点"
-        return 1
-    fi
-    
-    read -p "请选择要修改的节点序号 (0 取消): " node_choice
-    [[ "$node_choice" == "0" ]] && return 0
-    local idx=$((10#$node_choice-1))
-    if ! [[ "$node_choice" =~ ^[0-9]+$ ]] || (( idx < 0 || idx >= ${#https_nodes[@]} )); then
-        print_error "序号无效"
-        return 1
-    fi
-    
-    local array_idx="${https_nodes[$idx]}"
-    local tag="${INBOUND_TAGS[$array_idx]}"
-    local port="${INBOUND_PORTS[$array_idx]}"
-    local current_sni="${INBOUND_SNIS[$array_idx]}"
-    
+# ==================== HTTPS 修改菜单 ====================
+_modify_menu_HTTPS() {
+    local array_idx="$1" tag="$2" port="$3" current_sni="$4" proto="$5"
     local config_changed=0
-    
+
     while true; do
         echo ""
         echo -e "${CYAN}修改 HTTPS 节点 ${tag}:${NC}"
@@ -629,28 +519,14 @@ modify_https_node() {
         echo -e "  ${GREEN}[3]${NC} 重新生成 UUID"
         echo -e "  ${GREEN}[0]${NC} 返回"
         read -p "请选择: " mod_choice
-        
+
         case $mod_choice in
             1)
-                echo -e "${YELLOW}新端口 (留空随机分配)${NC}"
-                read -p "端口: " new_port
-                if [[ -z "$new_port" ]]; then
-                    new_port=$(get_random_free_port)
-                    [[ -z "$new_port" ]] && { print_error "无法获取随机端口"; continue; }
+                if _modify_port_common "$array_idx" "$tag" "$port" "vless-tls-in-"; then
+                    tag="$MODIFY_NEW_TAG"
+                    port="$MODIFY_NEW_PORT"
+                    config_changed=1
                 fi
-                if ! [[ "$new_port" =~ ^[0-9]+$ ]] || (( new_port < 1 || new_port > 65535 )); then
-                    print_error "端口无效"; continue
-                fi
-                if check_port_in_use "$new_port" && [[ "$new_port" != "$port" ]]; then
-                    print_warning "端口 ${new_port} 已被占用"; continue
-                fi
-                local new_tag=$(modify_port "$tag" "vless-tls-in-" "$new_port")
-                INBOUND_TAGS[$array_idx]="$new_tag"
-                INBOUND_PORTS[$array_idx]="$new_port"
-                tag="$new_tag"
-                port="$new_port"
-                config_changed=1
-                print_success "端口已修改为 ${new_port}"
                 ;;
             2)
                 echo -e "${YELLOW}新 SNI (留空随机)${NC}"
@@ -679,58 +555,21 @@ modify_https_node() {
                 ;;
         esac
     done
-    
-    if [[ $config_changed -eq 1 ]]; then
-        load_inbounds_from_config
-        generate_config && start_svc
-        regenerate_links_from_config
-    fi
+
+    return $config_changed
 }
 
-# ==================== AnyTLS 节点修改 ====================
-modify_anytls_node() {
-    if [[ ${#INBOUND_TAGS[@]} -eq 0 ]]; then
-        print_warning "当前没有可修改的节点"
-        return 1
-    fi
-    
-    echo ""
-    echo -e "${CYAN}当前 AnyTLS 节点:${NC}"
-    local anytls_nodes=()
-    for i in "${!INBOUND_TAGS[@]}"; do
-        if [[ "${INBOUND_PROTOS[$i]}" == "AnyTLS" || "${INBOUND_PROTOS[$i]}" == "AnyTLS+REALITY" ]]; then
-            anytls_nodes+=("$i")
-            echo -e "  ${GREEN}[${#anytls_nodes[@]}]${NC} 协议: ${INBOUND_PROTOS[$i]}, 端口: ${INBOUND_PORTS[$i]}, SNI: ${INBOUND_SNIS[$i]}, TAG: ${INBOUND_TAGS[$i]}"
-        fi
-    done
-    
-    if [[ ${#anytls_nodes[@]} -eq 0 ]]; then
-        print_warning "没有找到 AnyTLS 节点"
-        return 1
-    fi
-    
-    read -p "请选择要修改的节点序号 (0 取消): " node_choice
-    [[ "$node_choice" == "0" ]] && return 0
-    local idx=$((10#$node_choice-1))
-    if ! [[ "$node_choice" =~ ^[0-9]+$ ]] || (( idx < 0 || idx >= ${#anytls_nodes[@]} )); then
-        print_error "序号无效"
-        return 1
-    fi
-    
-    local array_idx="${anytls_nodes[$idx]}"
-    local tag="${INBOUND_TAGS[$array_idx]}"
-    local port="${INBOUND_PORTS[$array_idx]}"
-    local current_sni="${INBOUND_SNIS[$array_idx]}"
-    local proto="${INBOUND_PROTOS[$array_idx]}"
-    
+# ==================== AnyTLS 修改菜单 ====================
+_modify_menu_AnyTLS() {
+    local array_idx="$1" tag="$2" port="$3" current_sni="$4" proto="$5"
+    local config_changed=0
+
     # 判断是否为 AnyTLS+REALITY 模式
     local is_reality=0
     if [[ "$proto" == "AnyTLS+REALITY" ]]; then
         is_reality=1
     fi
-    
-    local config_changed=0
-    
+
     while true; do
         echo ""
         echo -e "${CYAN}修改 ${proto} 节点 ${tag}:${NC}"
@@ -739,34 +578,21 @@ modify_anytls_node() {
         echo -e "  ${GREEN}[3]${NC} 重新生成密码"
         echo -e "  ${GREEN}[0]${NC} 返回"
         read -p "请选择: " mod_choice
-        
+
         case $mod_choice in
             1)
-                echo -e "${YELLOW}新端口 (留空随机分配)${NC}"
-                read -p "端口: " new_port
-                if [[ -z "$new_port" ]]; then
-                    new_port=$(get_random_free_port)
-                    [[ -z "$new_port" ]] && { print_error "无法获取随机端口"; continue; }
-                fi
-                if ! [[ "$new_port" =~ ^[0-9]+$ ]] || (( new_port < 1 || new_port > 65535 )); then
-                    print_error "端口无效"; continue
-                fi
-                if check_port_in_use "$new_port" && [[ "$new_port" != "$port" ]]; then
-                    print_warning "端口 ${new_port} 已被占用"; continue
-                fi
+                # AnyTLS 端口修改：根据 is_reality 选择前缀
                 local new_tag_prefix
                 if [[ $is_reality -eq 1 ]]; then
                     new_tag_prefix="anytls-reality-"
                 else
                     new_tag_prefix="anytls-in-"
                 fi
-                local new_tag=$(modify_port "$tag" "$new_tag_prefix" "$new_port")
-                INBOUND_TAGS[$array_idx]="$new_tag"
-                INBOUND_PORTS[$array_idx]="$new_port"
-                tag="$new_tag"
-                port="$new_port"
-                config_changed=1
-                print_success "端口已修改为 ${new_port}"
+                if _modify_port_common "$array_idx" "$tag" "$port" "$new_tag_prefix"; then
+                    tag="$MODIFY_NEW_TAG"
+                    port="$MODIFY_NEW_PORT"
+                    config_changed=1
+                fi
                 ;;
             2)
                 echo -e "${YELLOW}新 SNI (留空随机)${NC}"
@@ -804,15 +630,53 @@ modify_anytls_node() {
                 ;;
         esac
     done
-    
-    if [[ $config_changed -eq 1 ]]; then
-        load_inbounds_from_config
-        generate_config && start_svc
-        regenerate_links_from_config
-    fi
+
+    return $config_changed
+}
+
+# ==================== 节点修改入口函数 ====================
+modify_reality_node() {
+    _GENERIC_SHOW_SNI=1 _GENERIC_SHOW_PROTO=0 modify_node_generic "Reality"
+}
+
+modify_hysteria2_node() {
+    _GENERIC_SHOW_SNI=1 _GENERIC_SHOW_PROTO=0 modify_node_generic "Hysteria2"
+}
+
+modify_socks5_node() {
+    _GENERIC_SHOW_SNI=0 _GENERIC_SHOW_PROTO=0 modify_node_generic "SOCKS5"
+}
+
+modify_shadowtls_node() {
+    _GENERIC_SHOW_SNI=1 _GENERIC_SHOW_PROTO=0 modify_node_generic "ShadowTLS v3"
+}
+
+modify_https_node() {
+    _GENERIC_SHOW_SNI=1 _GENERIC_SHOW_PROTO=0 modify_node_generic "HTTPS"
+}
+
+modify_anytls_node() {
+    _GENERIC_SHOW_SNI=1 _GENERIC_SHOW_PROTO=1 modify_node_generic "AnyTLS" "AnyTLS+REALITY"
 }
 
 # ==================== 节点删除功能 ====================
+
+# 从全局数组中移除指定索引的节点
+remove_inbound_by_index() {
+    local idx="$1"
+    unset INBOUND_TAGS[$idx]
+    unset INBOUND_PORTS[$idx]
+    unset INBOUND_PROTOS[$idx]
+    unset INBOUND_SNIS[$idx]
+    unset INBOUND_RELAY_TAGS[$idx]
+    # 重建数组（移除空元素）
+    INBOUND_TAGS=("${INBOUND_TAGS[@]}")
+    INBOUND_PORTS=("${INBOUND_PORTS[@]}")
+    INBOUND_PROTOS=("${INBOUND_PROTOS[@]}")
+    INBOUND_SNIS=("${INBOUND_SNIS[@]}")
+    INBOUND_RELAY_TAGS=("${INBOUND_RELAY_TAGS[@]}")
+}
+
 delete_single_node() {
     if [[ ${#INBOUND_TAGS[@]} -eq 0 ]]; then
         print_warning "当前没有可删除的节点"
@@ -876,18 +740,7 @@ delete_single_node() {
         mv "$temp_config" "${CONFIG_FILE}"
         
         # 从数组中删除
-        unset INBOUND_TAGS[$index]
-        unset INBOUND_PORTS[$index]
-        unset INBOUND_PROTOS[$index]
-        unset INBOUND_SNIS[$index]
-        unset INBOUND_RELAY_TAGS[$index]
-        
-        # 重建数组（移除空元素）
-        INBOUND_TAGS=("${INBOUND_TAGS[@]}")
-        INBOUND_PORTS=("${INBOUND_PORTS[@]}")
-        INBOUND_PROTOS=("${INBOUND_PROTOS[@]}")
-        INBOUND_SNIS=("${INBOUND_SNIS[@]}")
-        INBOUND_RELAY_TAGS=("${INBOUND_RELAY_TAGS[@]}")
+        remove_inbound_by_index "$index"
         
         # 重新加载配置
         load_inbounds_from_config
@@ -1019,27 +872,27 @@ build_outbounds() {
     done
 
     # 添加 direct outbound（根据出站模式设置绑定地址和域名解析策略）
+    local bind_field="" resolver_strategy=""
+    case "$OUTBOUND_IP_MODE" in
+        ipv6)
+            [[ -n "${SERVER_IPV6}" ]] && bind_field=",\"inet6_bind_address\":\"${SERVER_IPV6}\",\"fallback_delay\":\"300ms\""
+            resolver_strategy="prefer_ipv6"
+            ;;
+        ipv6_only)
+            [[ -n "${SERVER_IPV6}" ]] && bind_field=",\"inet6_bind_address\":\"${SERVER_IPV6}\""
+            resolver_strategy="ipv6_only"
+            ;;
+        ipv4)
+            [[ -n "${SERVER_IP}" ]] && bind_field=",\"inet4_bind_address\":\"${SERVER_IP}\""
+            resolver_strategy="ipv4_only"
+            ;;
+    esac
+
     local direct_outbound
-    if [[ "$OUTBOUND_IP_MODE" == "ipv6" ]]; then
-        if [[ -n "${SERVER_IPV6}" ]]; then
-            direct_outbound="{\"type\": \"direct\", \"tag\": \"direct\", \"tcp_fast_open\": false, \"inet6_bind_address\": \"${SERVER_IPV6}\", \"fallback_delay\": \"300ms\", \"domain_resolver\": {\"server\": \"remote\", \"strategy\": \"prefer_ipv6\"}}"
-        else
-            direct_outbound='{"type": "direct", "tag": "direct", "tcp_fast_open": false, "domain_resolver": {"server": "remote", "strategy": "prefer_ipv6"}}'
-        fi
-    elif [[ "$OUTBOUND_IP_MODE" == "ipv6_only" ]]; then
-        if [[ -n "${SERVER_IPV6}" ]]; then
-            direct_outbound="{\"type\": \"direct\", \"tag\": \"direct\", \"tcp_fast_open\": false, \"inet6_bind_address\": \"${SERVER_IPV6}\", \"domain_resolver\": {\"server\": \"remote\", \"strategy\": \"ipv6_only\"}}"
-        else
-            direct_outbound='{"type": "direct", "tag": "direct", "tcp_fast_open": false, "domain_resolver": {"server": "remote", "strategy": "ipv6_only"}}'
-        fi
-    elif [[ "$OUTBOUND_IP_MODE" == "ipv4" ]]; then
-        if [[ -n "${SERVER_IP}" ]]; then
-            direct_outbound="{\"type\": \"direct\", \"tag\": \"direct\", \"tcp_fast_open\": false, \"inet4_bind_address\": \"${SERVER_IP}\", \"domain_resolver\": {\"server\": \"remote\", \"strategy\": \"ipv4_only\"}}"
-        else
-            direct_outbound='{"type": "direct", "tag": "direct", "tcp_fast_open": false, "domain_resolver": {"server": "remote", "strategy": "ipv4_only"}}'
-        fi
+    if [[ -n "$resolver_strategy" ]]; then
+        direct_outbound="{\"type\":\"direct\",\"tag\":\"direct\",\"tcp_fast_open\":false${bind_field},\"domain_resolver\":{\"server\":\"remote\",\"strategy\":\"${resolver_strategy}\"}}"
     else
-        direct_outbound='{"type": "direct", "tag": "direct", "tcp_fast_open": false}'
+        direct_outbound='{"type":"direct","tag":"direct","tcp_fast_open":false}'
     fi
     outbounds_array+=("$direct_outbound")
 
