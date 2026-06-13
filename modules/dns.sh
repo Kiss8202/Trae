@@ -33,10 +33,18 @@ load_dns_config() {
 build_dns_remote_server() {
     case "${DNS_MODE}" in
         "doh")
-            echo "{\"tag\": \"remote\", \"type\": \"https\", \"server\": \"${DNS_SERVER}\", \"server_port\": 443}"
+            if [[ $SB_GE_1_12 -eq 1 ]]; then
+                echo "{\"tag\": \"remote\", \"type\": \"https\", \"server\": \"${DNS_SERVER}\", \"server_port\": 443, \"domain_resolver\": \"local\"}"
+            else
+                echo "{\"tag\": \"remote\", \"type\": \"https\", \"server\": \"${DNS_SERVER}\", \"server_port\": 443, \"address_resolver\": \"local\"}"
+            fi
             ;;
         "dot")
-            echo "{\"tag\": \"remote\", \"type\": \"tls\", \"server\": \"${DNS_SERVER}\", \"server_port\": 853}"
+            if [[ $SB_GE_1_12 -eq 1 ]]; then
+                echo "{\"tag\": \"remote\", \"type\": \"tls\", \"server\": \"${DNS_SERVER}\", \"server_port\": 853, \"domain_resolver\": \"local\"}"
+            else
+                echo "{\"tag\": \"remote\", \"type\": \"tls\", \"server\": \"${DNS_SERVER}\", \"server_port\": 853, \"address_resolver\": \"local\"}"
+            fi
             ;;
         "udp"|*)
             echo "{\"tag\": \"remote\", \"type\": \"udp\", \"server\": \"${DNS_SERVER}\"}"
