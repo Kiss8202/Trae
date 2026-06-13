@@ -116,6 +116,7 @@ setup_hysteria2() {
     read -p "配置带宽? [y/N]: " ENABLE_BW
     ENABLE_BW=${ENABLE_BW:-N}
     local BW_CONFIG=""
+    local IGNORE_CLIENT_BW=""
     if [[ "$ENABLE_BW" =~ ^[Yy]$ ]]; then
         read -p "上传带宽 (Mbps, 留空不限制): " UP_MBPS
         read -p "下载带宽 (Mbps, 留空不限制): " DOWN_MBPS
@@ -130,6 +131,10 @@ setup_hysteria2() {
         if [[ -n "$bw_parts" ]]; then
             BW_CONFIG=",${bw_parts}"
         fi
+    else
+        # 不配置带宽时，强制客户端使用 BBR CC，避免 Brutal CC 无带宽限制导致无法传输数据
+        IGNORE_CLIENT_BW=",
+  \"ignore_client_bandwidth\": true"
     fi
 
     print_info "为 ${HY2_SNI} 生成自签证书..."
@@ -157,7 +162,7 @@ setup_hysteria2() {
   \"tag\": \"hy2-in-${PORT}\",
   \"listen\": \"${listen_addr}\",
   \"listen_port\": ${PORT},
-  \"users\": [{\"password\": \"${NODE_HY2_PASSWORD}\"}]${BW_CONFIG},
+  \"users\": [{\"password\": \"${NODE_HY2_PASSWORD}\"}]${BW_CONFIG}${IGNORE_CLIENT_BW},
   \"tls\": {
     \"enabled\": true,
     \"alpn\": [\"h3\"],
