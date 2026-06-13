@@ -896,8 +896,8 @@ build_outbounds() {
 
     # ipv6_only 模式下阻断 IPv4 出站
     if [[ "$OUTBOUND_IP_MODE" == "ipv6_only" ]]; then
-        if [[ $SB_GE_1_13 -eq 1 ]]; then
-            : # 1.13.0+ 不添加 block outbound，在路由规则中用 action 处理
+        if [[ $SB_GE_1_11 -eq 1 ]]; then
+            : # 1.11.0+ 使用 route rule action reject，不需要 block outbound
         else
             local block_outbound='{"type": "block", "tag": "block-ipv4"}'
             outbounds_array+=("$block_outbound")
@@ -919,15 +919,15 @@ build_outbounds() {
 build_route_rules() {
     local route_rules=()
 
-    # 添加协议嗅探规则（1.13.0+ 使用 route rule action）
-    if [[ $SB_GE_1_13 -eq 1 ]]; then
-        route_rules+=('{"action":"sniff"}')
+    # 添加协议嗅探规则（1.11.0+ 使用 route rule action）
+    if [[ $SB_GE_1_11 -eq 1 ]]; then
+        route_rules+=('{"action":"sniff","sniffer":["http","tls","quic"]}')
     fi
 
     # ipv6_only 模式下，添加规则阻断所有 IPv4 出站流量
     if [[ "$OUTBOUND_IP_MODE" == "ipv6_only" ]]; then
-        if [[ $SB_GE_1_13 -eq 1 ]]; then
-            route_rules+=('{"ip_cidr":["0.0.0.0/0"],"action":"block"}')
+        if [[ $SB_GE_1_11 -eq 1 ]]; then
+            route_rules+=('{"ip_cidr":["0.0.0.0/0"],"action":"reject"}')
         else
             route_rules+=('{"ip_cidr":["0.0.0.0/0"],"outbound":"block-ipv4"}')
         fi

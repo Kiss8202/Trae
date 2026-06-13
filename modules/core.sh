@@ -225,8 +225,7 @@ generate_shadowtls_client_config() {
       "type": "mixed",
       "tag": "mixed-in",
       "listen": "127.0.0.1",
-      "listen_port": 1080,
-      "sniff": true
+      "listen_port": 1080
     }
   ],
   "outbounds": [
@@ -261,6 +260,7 @@ generate_shadowtls_client_config() {
   ],
   "route": {
     "rules": [
+      {"action":"sniff","sniffer":["http","tls","quic"]},
       {"geosite": "cn", "outbound": "direct"},
       {"geoip": "cn", "outbound": "direct"}
     ],
