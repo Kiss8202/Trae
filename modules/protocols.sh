@@ -622,7 +622,7 @@ setup_anytls() {
     "final": "AnyTLS+REALITY",
     "auto_detect_interface": true,
     "rules": [
-      {"action":"sniff","protocols":["http","tls","quic"]}
+      {"action":"sniff"}
     ]
   }
 }
@@ -687,7 +687,7 @@ EOF
     "final": "AnyTLS",
     "auto_detect_interface": true,
     "rules": [
-      {"action":"sniff","protocols":["http","tls","quic"]}
+      {"action":"sniff"}
     ]
   }
 }

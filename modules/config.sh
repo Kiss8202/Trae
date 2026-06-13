@@ -921,7 +921,7 @@ build_route_rules() {
 
     # 添加协议嗅探规则（1.13.0+ 使用 route rule action）
     if [[ $SB_GE_1_13 -eq 1 ]]; then
-        route_rules+=('{"action":"sniff","protocols":["http","tls","quic"]}')
+        route_rules+=('{"action":"sniff"}')
     fi
 
     # ipv6_only 模式下，添加规则阻断所有 IPv4 出站流量
