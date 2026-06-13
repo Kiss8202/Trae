@@ -870,15 +870,15 @@ build_outbounds() {
     case "$OUTBOUND_IP_MODE" in
         ipv6)
             relay_domain_strategy="prefer_ipv6"
-            [[ -n "${SERVER_IPV6}" ]] && relay_bind_fields=",\"inet6_bind_address\":\"${SERVER_IPV6}\",\"fallback_delay\":\"300ms\""
+            [[ -n "${SERVER_IPV6}" ]] && relay_bind_fields="\"inet6_bind_address\":\"${SERVER_IPV6}\",\"fallback_delay\":\"300ms\""
             ;;
         ipv6_only)
             relay_domain_strategy="ipv6_only"
-            [[ -n "${SERVER_IPV6}" ]] && relay_bind_fields=",\"inet6_bind_address\":\"${SERVER_IPV6}\""
+            [[ -n "${SERVER_IPV6}" ]] && relay_bind_fields="\"inet6_bind_address\":\"${SERVER_IPV6}\""
             ;;
         ipv4)
             relay_domain_strategy="ipv4_only"
-            [[ -n "${SERVER_IP}" ]] && relay_bind_fields=",\"inet4_bind_address\":\"${SERVER_IP}\""
+            [[ -n "${SERVER_IP}" ]] && relay_bind_fields="\"inet4_bind_address\":\"${SERVER_IP}\""
             ;;
         dual|"")
             # dual 模式：同时支持 IPv4/IPv6，不绑定特定地址
