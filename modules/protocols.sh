@@ -538,17 +538,21 @@ setup_anytls() {
     read -p "指纹 [chrome]: " UTLS_FINGERPRINT
     UTLS_FINGERPRINT=${UTLS_FINGERPRINT:-chrome}
 
-    # 构建 padding_scheme（默认启用随机填充）
+    # 构建 padding_scheme（增强版填充方案，覆盖更多数据包，增大随机范围）
     local padding_config="[
-    \"stop=8\",
-    \"0=30-30\",
-    \"1=100-400\",
-    \"2=400-500,c,500-1000,c,500-1000,c,500-1000,c,500-1000\",
-    \"3=9-9,500-1000\",
-    \"4=500-1000\",
-    \"5=500-1000\",
-    \"6=500-1000\",
-    \"7=500-1000\"
+    \"stop=12\",
+    \"0=50-80\",
+    \"1=150-600\",
+    \"2=300-600,c,500-1200,c,500-1200,c,500-1200\",
+    \"3=9-9,600-1200\",
+    \"4=500-1200\",
+    \"5=500-1200,c,500-1200\",
+    \"6=400-1000\",
+    \"7=400-1000\",
+    \"8=300-800,c,500-1000\",
+    \"9=300-800\",
+    \"10=200-600\",
+    \"11=200-600\"
   ]"
 
     local listen_addr=$(get_listen_address)
@@ -607,6 +611,9 @@ setup_anytls() {
       "server": "${SERVER_IP}",
       "server_port": ${PORT},
       "password": "${NODE_ANYTLS_PASSWORD}",
+      "idle_session_check_interval": "30s",
+      "idle_session_timeout": "30s",
+      "min_idle_session": 5,
       "tls": {
         "enabled": true,
         "server_name": "${ANYTLS_SNI}",
@@ -655,6 +662,9 @@ EOF
       "server": "${SERVER_IPV6}",
       "server_port": ${PORT},
       "password": "${NODE_ANYTLS_PASSWORD}",
+      "idle_session_check_interval": "30s",
+      "idle_session_timeout": "30s",
+      "min_idle_session": 5,
       "tls": {
         "enabled": true,
         "server_name": "${ANYTLS_SNI}",
@@ -719,6 +729,9 @@ EOF
       "server": "${SERVER_IP}",
       "server_port": ${PORT},
       "password": "${NODE_ANYTLS_PASSWORD}",
+      "idle_session_check_interval": "30s",
+      "idle_session_timeout": "30s",
+      "min_idle_session": 5,
       "tls": {
         "enabled": true,
         "server_name": "${ANYTLS_SNI}",
@@ -768,6 +781,9 @@ EOF
       "server": "${SERVER_IPV6}",
       "server_port": ${PORT},
       "password": "${NODE_ANYTLS_PASSWORD}",
+      "idle_session_check_interval": "30s",
+      "idle_session_timeout": "30s",
+      "min_idle_session": 5,
       "tls": {
         "enabled": true,
         "server_name": "${ANYTLS_SNI}",
