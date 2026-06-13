@@ -130,6 +130,10 @@ setup_hysteria2() {
         fi
         if [[ -n "$bw_parts" ]]; then
             BW_CONFIG=",${bw_parts}"
+        else
+            # 用户选择配置带宽但都留空，等同于不配置带宽
+            IGNORE_CLIENT_BW=",
+  \"ignore_client_bandwidth\": true"
         fi
     else
         # 不配置带宽时，强制客户端使用 BBR CC，避免 Brutal CC 无带宽限制导致无法传输数据
