@@ -531,11 +531,6 @@ setup_anytls() {
     else
         # 纯 AnyTLS 需要自签证书
         gen_cert_for_sni "${ANYTLS_SNI}"
-        # 询问是否允许不安全连接
-        echo -e "${YELLOW}是否允许跳过证书验证（insecure）？${NC}"
-        echo -e "${CYAN}允许可以简化客户端配置，但会降低安全性（中间人攻击风险）${NC}"
-        read -p "允许 insecure? [y/N]: " ALLOW_INSECURE
-        ALLOW_INSECURE=${ALLOW_INSECURE:-N}
     fi
 
     # 询问 uTLS 指纹（可选）
@@ -638,11 +633,6 @@ EOF
         LINK="请使用 sing-box 客户端，配置文件已保存到: ${CLIENT_JSON_PATH}"
     else
         # 纯 AnyTLS 入站（需要证书）
-        local insecure_bool="false"
-        if [[ "$ALLOW_INSECURE" =~ ^[Yy]$ ]]; then
-            insecure_bool="true"
-        fi
-        # 注意: insecure 是客户端 TLS 字段，服务端入站不需要
         inbound="{
   \"type\": \"anytls\",
   \"tag\": \"anytls-in-${PORT}\",
@@ -684,7 +674,7 @@ EOF
       "tls": {
         "enabled": true,
         "server_name": "${ANYTLS_SNI}",
-        "insecure": ${insecure_bool},
+        "certificate_path": ["${CERT_DIR}/${ANYTLS_SNI}/cert.pem"],
         "utls": { "enabled": true, "fingerprint": "${UTLS_FINGERPRINT}" }
       }
     },
@@ -700,8 +690,8 @@ EOF
 }
 EOF
         chmod 644 "${CLIENT_JSON_PATH}"
-        # 同时生成 anytls:// 链接
-        LINK=$(generate_proto_link "anytls" "${SERVER_IP}" "${PORT}" "password=${NODE_ANYTLS_PASSWORD}" "sni=${ANYTLS_SNI}" "fp=${UTLS_FINGERPRINT}" "insecure=${insecure_bool}")
+        # 同时生成 anytls:// 链接（自签证书默认 insecure=true）
+        LINK=$(generate_proto_link "anytls" "${SERVER_IP}" "${PORT}" "password=${NODE_ANYTLS_PASSWORD}" "sni=${ANYTLS_SNI}" "fp=${UTLS_FINGERPRINT}" "insecure=true")
     fi
 
     # 并入全局 inbound JSON

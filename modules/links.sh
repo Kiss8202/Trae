@@ -277,11 +277,11 @@ regenerate_anytls_link() {
             ALL_LINKS_TEXT="${ALL_LINKS_TEXT}${link_text}"
             ANYTLS_LINKS="${ANYTLS_LINKS}${link_text}"
         else
-            local link_ipv4=$(generate_proto_link "anytls" "${SERVER_IP}" "${port}" "password=${password}" "sni=${sni}")
+            local link_ipv4=$(generate_proto_link "anytls" "${SERVER_IP}" "${port}" "password=${password}" "sni=${sni}" "insecure=true")
             add_link "$link_ipv4" "AnyTLS" "" "${SERVER_IP}" "${port}" "${sni}"
 
             if [[ -n "${SERVER_IPV6}" ]]; then
-                local link_ipv6=$(generate_proto_link "anytls" "[${SERVER_IPV6}]" "${port}" "password=${password}" "sni=${sni}")
+                local link_ipv6=$(generate_proto_link "anytls" "[${SERVER_IPV6}]" "${port}" "password=${password}" "sni=${sni}" "insecure=true")
                 add_link "$link_ipv6" "AnyTLS" "" "[${SERVER_IPV6}]" "${port}" "${sni}"
             fi
         fi
