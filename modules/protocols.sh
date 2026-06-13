@@ -167,10 +167,8 @@ setup_hysteria2() {
   }${obfs_config},
   \"masquerade\": {
     \"type\": \"proxy\",
-    \"proxy\": {
-      \"url\": \"https://www.bing.com\",
-      \"rewrite_host\": true
-    }
+    \"url\": \"https://www.bing.com\",
+    \"rewrite_host\": true
   }
 }"
     
