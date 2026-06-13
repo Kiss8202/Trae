@@ -184,7 +184,7 @@ show_protocol_links() {
     fi
 
     echo -e "${color}【${proto}】${NC}"
-    echo "$links"
+    echo -e "$links"
     echo ""
 }
 
