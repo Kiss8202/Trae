@@ -631,6 +631,54 @@ setup_anytls() {
 EOF
         chmod 644 "${CLIENT_JSON_PATH}"
         LINK="请使用 sing-box 客户端，配置文件已保存到: ${CLIENT_JSON_PATH}"
+
+        # 生成 IPv6 客户端配置文件
+        if [[ -n "${SERVER_IPV6}" ]]; then
+            local client_config_file_ipv6="${LINK_DIR}/anytls_reality_client_${PORT}_ipv6.json"
+            cat > "${client_config_file_ipv6}" << EOF
+{
+  "log": { "level": "info" },
+  "inbounds": [
+    {
+      "type": "tun",
+      "tag": "tun-in",
+      "interface_name": "sing-box0",
+      "address": ["172.19.0.1/30", "fd00::1/126"],
+      "auto_route": true,
+      "stack": "system"
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "anytls",
+      "tag": "AnyTLS+REALITY",
+      "server": "${SERVER_IPV6}",
+      "server_port": ${PORT},
+      "password": "${NODE_ANYTLS_PASSWORD}",
+      "tls": {
+        "enabled": true,
+        "server_name": "${ANYTLS_SNI}",
+        "utls": { "enabled": true, "fingerprint": "${UTLS_FINGERPRINT}" },
+        "reality": {
+          "enabled": true,
+          "public_key": "${REALITY_PUBLIC}",
+          "short_id": "${SHORT_ID}"
+        }
+      }
+    },
+    { "type": "direct", "tag": "direct" }
+  ],
+  "route": {
+    "final": "AnyTLS+REALITY",
+    "auto_detect_interface": true,
+    "rules": [
+      {"action":"sniff","sniffer":["http","tls","quic"]}
+    ]
+  }
+}
+EOF
+            chmod 644 "${client_config_file_ipv6}"
+        fi
     else
         # 纯 AnyTLS 入站（需要证书）
         inbound="{
@@ -692,6 +740,54 @@ EOF
         chmod 644 "${CLIENT_JSON_PATH}"
         # 同时生成 anytls:// 链接（自签证书默认 insecure=true）
         LINK=$(generate_proto_link "anytls" "${SERVER_IP}" "${PORT}" "password=${NODE_ANYTLS_PASSWORD}" "sni=${ANYTLS_SNI}" "fp=${UTLS_FINGERPRINT}" "insecure=true")
+        add_link "$LINK" "${PROTO}" "$EXTRA_INFO" "${SERVER_IP}" "${PORT}" "${ANYTLS_SNI}"
+
+        # 生成 IPv6 链接和客户端配置
+        if [[ -n "${SERVER_IPV6}" ]]; then
+            local link_ipv6=$(generate_proto_link "anytls" "[${SERVER_IPV6}]" "${PORT}" "password=${NODE_ANYTLS_PASSWORD}" "sni=${ANYTLS_SNI}" "fp=${UTLS_FINGERPRINT}" "insecure=true")
+            add_link "$link_ipv6" "${PROTO}" "$EXTRA_INFO" "[${SERVER_IPV6}]" "${PORT}" "${ANYTLS_SNI}"
+
+            local client_config_file_ipv6="${LINK_DIR}/anytls_client_${PORT}_ipv6.json"
+            cat > "${client_config_file_ipv6}" << EOF
+{
+  "log": { "level": "info" },
+  "inbounds": [
+    {
+      "type": "tun",
+      "tag": "tun-in",
+      "interface_name": "sing-box0",
+      "address": ["172.19.0.1/30", "fd00::1/126"],
+      "auto_route": true,
+      "stack": "system"
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "anytls",
+      "tag": "AnyTLS",
+      "server": "${SERVER_IPV6}",
+      "server_port": ${PORT},
+      "password": "${NODE_ANYTLS_PASSWORD}",
+      "tls": {
+        "enabled": true,
+        "server_name": "${ANYTLS_SNI}",
+        "certificate_path": ["${CERT_DIR}/${ANYTLS_SNI}/cert.pem"],
+        "utls": { "enabled": true, "fingerprint": "${UTLS_FINGERPRINT}" }
+      }
+    },
+    { "type": "direct", "tag": "direct" }
+  ],
+  "route": {
+    "final": "AnyTLS",
+    "auto_detect_interface": true,
+    "rules": [
+      {"action":"sniff","sniffer":["http","tls","quic"]}
+    ]
+  }
+}
+EOF
+            chmod 644 "${client_config_file_ipv6}"
+        fi
     fi
 
     # 并入全局 inbound JSON
@@ -716,9 +812,15 @@ EOF
     CURRENT_NEW_LINKS=""
     if [[ "$ENABLE_REALITY" =~ ^[Yy]$ ]]; then
         CURRENT_NEW_LINKS="${CURRENT_NEW_LINKS}[${PROTO}] ${SERVER_IP}:${PORT} (SNI: ${ANYTLS_SNI})\n客户端配置文件: ${CLIENT_JSON_PATH}\n----------------------------------------\n\n"
+        if [[ -n "${SERVER_IPV6}" ]]; then
+            CURRENT_NEW_LINKS="${CURRENT_NEW_LINKS}[${PROTO}] [${SERVER_IPV6}]:${PORT} (SNI: ${ANYTLS_SNI})\n客户端配置文件: ${LINK_DIR}/anytls_reality_client_${PORT}_ipv6.json\n----------------------------------------\n\n"
+        fi
     else
         CURRENT_NEW_LINKS="${CURRENT_NEW_LINKS}[${PROTO}] ${SERVER_IP}:${PORT} (SNI: ${ANYTLS_SNI})\n${LINK}\n客户端配置文件: ${CLIENT_JSON_PATH}\n----------------------------------------\n\n"
-        add_link "$LINK" "${PROTO}" "$EXTRA_INFO" "${SERVER_IP}" "${PORT}" "${ANYTLS_SNI}"
+        if [[ -n "${SERVER_IPV6}" ]]; then
+            local link_ipv6=$(generate_proto_link "anytls" "[${SERVER_IPV6}]" "${PORT}" "password=${NODE_ANYTLS_PASSWORD}" "sni=${ANYTLS_SNI}" "fp=${UTLS_FINGERPRINT}" "insecure=true")
+            CURRENT_NEW_LINKS="${CURRENT_NEW_LINKS}[${PROTO}] [${SERVER_IPV6}]:${PORT} (SNI: ${ANYTLS_SNI})\n${link_ipv6}\n客户端配置文件: ${LINK_DIR}/anytls_client_${PORT}_ipv6.json\n----------------------------------------\n\n"
+        fi
     fi
 
     print_success "AnyTLS 节点添加完成 (REALITY: ${ENABLE_REALITY})"
