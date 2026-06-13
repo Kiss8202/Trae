@@ -255,8 +255,7 @@ generate_shadowtls_client_config() {
         "utls": {"enabled": true, "fingerprint": "chrome"}
       }
     },
-    {"type": "direct", "tag": "direct"},
-    {"type": "block", "tag": "block"}
+    {"type": "direct", "tag": "direct"}
   ],
   "route": {
     "rules": [
