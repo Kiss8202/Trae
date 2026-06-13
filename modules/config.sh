@@ -807,6 +807,13 @@ delete_all_nodes() {
     local dns_remote_server
     dns_remote_server=$(build_dns_remote_server)
 
+    # 1.12.0+ 支持 default_domain_resolver
+    local route_domain_resolver=""
+    if [[ $SB_GE_1_12 -eq 1 ]]; then
+        route_domain_resolver=",
+    \"default_domain_resolver\": \"local\""
+    fi
+
     cat > ${CONFIG_FILE} << EOFCONFIG
 {
   "log": {
@@ -832,8 +839,7 @@ delete_all_nodes() {
     }
   ],
   "route": {
-    "final": "direct",
-    "default_domain_resolver": "local"
+    "final": "direct"${route_domain_resolver}
   }
 }
 EOFCONFIG
@@ -887,11 +893,17 @@ build_outbounds() {
             ;;
     esac
 
-    # 添加所有中转 outbound（注入 domain_strategy 和绑定地址）
+    # 添加所有中转 outbound（注入域名解析策略和绑定地址）
     for relay_json in "${RELAY_JSONS[@]}"; do
+        # 域名解析策略：1.11.x 用 domain_strategy，1.12.0+ 用 domain_resolver
         if [[ -n "$relay_domain_strategy" ]]; then
-            relay_json=$(echo "$relay_json" | jq --arg ds "$relay_domain_strategy" \
-                '. + {"domain_strategy": $ds}' 2>/dev/null || echo "$relay_json")
+            if [[ $SB_GE_1_12 -eq 1 ]]; then
+                relay_json=$(echo "$relay_json" | jq --arg ds "$relay_domain_strategy" \
+                    '. + {"domain_resolver": {"server": "remote", "strategy": $ds}}' 2>/dev/null || echo "$relay_json")
+            else
+                relay_json=$(echo "$relay_json" | jq --arg ds "$relay_domain_strategy" \
+                    '. + {"domain_strategy": $ds}' 2>/dev/null || echo "$relay_json")
+            fi
         fi
         if [[ -n "$relay_bind_fields" ]]; then
             local bind_json
@@ -922,7 +934,13 @@ build_outbounds() {
 
     local direct_outbound
     if [[ -n "$resolver_strategy" ]]; then
-        direct_outbound="{\"type\":\"direct\",\"tag\":\"direct\",\"tcp_fast_open\":false${bind_field},\"domain_resolver\":{\"server\":\"remote\",\"strategy\":\"${resolver_strategy}\"}}"
+        if [[ $SB_GE_1_12 -eq 1 ]]; then
+            # 1.12.0+ 使用 domain_resolver
+            direct_outbound="{\"type\":\"direct\",\"tag\":\"direct\",\"tcp_fast_open\":false${bind_field},\"domain_resolver\":{\"server\":\"remote\",\"strategy\":\"${resolver_strategy}\"}}"
+        else
+            # 1.11.x 使用 domain_strategy
+            direct_outbound="{\"type\":\"direct\",\"tag\":\"direct\",\"tcp_fast_open\":false${bind_field},\"domain_strategy\":\"${resolver_strategy}\"}"
+        fi
     else
         direct_outbound='{"type":"direct","tag":"direct","tcp_fast_open":false}'
     fi
@@ -1015,7 +1033,10 @@ build_route_rules() {
     done
 
     # 组合路由 JSON（根据 route_rules 是否非空决定是否包含 rules 数组）
-    local route_domain_resolver=",\"default_domain_resolver\":\"local\""
+    local route_domain_resolver=""
+    if [[ $SB_GE_1_12 -eq 1 ]]; then
+        route_domain_resolver=",\"default_domain_resolver\":\"local\""
+    fi
     local route_json
     if [[ ${#route_rules[@]} -gt 0 ]]; then
         route_json="{\"rules\":["
