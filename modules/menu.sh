@@ -903,7 +903,7 @@ main_menu() {
     while true; do
         # 只在配置文件变化时重新加载，避免每次循环都解析 JSON
         if [[ -f "${CONFIG_FILE}" ]]; then
-            local current_mtime=$(stat -c %Y "${CONFIG_FILE}" 2>/dev/null || echo 0)
+            local current_mtime=$(stat -c %Y "${CONFIG_FILE}" 2>/dev/null || stat -f %m "${CONFIG_FILE}" 2>/dev/null || echo 0)
             if [[ $current_mtime -ne $config_mtime ]]; then
                 load_inbounds_from_config
                 config_mtime=$current_mtime

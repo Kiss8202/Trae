@@ -420,7 +420,7 @@ detect_singbox_version() {
         return 0
     fi
 
-    local version=$(${INSTALL_DIR}/sing-box version 2>/dev/null | grep -oP 'sing-box version \K[0-9.]+' || echo "0.0.0")
+    local version=$(${INSTALL_DIR}/sing-box version 2>/dev/null | awk '/sing-box version/{print $3}' || echo "0.0.0")
     if [[ -z "$version" || "$version" == "0.0.0" ]]; then
         return 0
     fi

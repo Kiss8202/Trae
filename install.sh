@@ -4,7 +4,7 @@ if [ -z "$BASH_VERSION" ]; then
     if ! command -v bash >/dev/null 2>&1; then
         if command -v apk >/dev/null 2>&1; then
             echo "[引导] Alpine 系统，正在安装 bash ..."
-            apk add --no-cache bash gcompat libexecinfo >/dev/null 2>&1
+            apk add --no-cache bash >/dev/null 2>&1
         elif command -v apt-get >/dev/null 2>&1; then
             echo "[引导] 正在安装 bash ..."
             apt-get update -qq && apt-get install -y bash >/dev/null 2>&1
