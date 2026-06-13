@@ -864,8 +864,42 @@ EOFCONFIG
 build_outbounds() {
     local outbounds_array=()
 
-    # 添加所有中转 outbound
+    # 根据出站模式确定中转 outbound 的 domain_strategy 和绑定地址
+    local relay_domain_strategy=""
+    local relay_bind_fields=""
+    case "$OUTBOUND_IP_MODE" in
+        ipv6)
+            relay_domain_strategy="prefer_ipv6"
+            [[ -n "${SERVER_IPV6}" ]] && relay_bind_fields=",\"inet6_bind_address\":\"${SERVER_IPV6}\",\"fallback_delay\":\"300ms\""
+            ;;
+        ipv6_only)
+            relay_domain_strategy="ipv6_only"
+            [[ -n "${SERVER_IPV6}" ]] && relay_bind_fields=",\"inet6_bind_address\":\"${SERVER_IPV6}\""
+            ;;
+        ipv4)
+            relay_domain_strategy="ipv4_only"
+            [[ -n "${SERVER_IP}" ]] && relay_bind_fields=",\"inet4_bind_address\":\"${SERVER_IP}\""
+            ;;
+        dual|"")
+            # dual 模式：同时支持 IPv4/IPv6，不绑定特定地址
+            relay_domain_strategy="prefer_ipv4"
+            relay_bind_fields="\"fallback_delay\":\"300ms\""
+            ;;
+    esac
+
+    # 添加所有中转 outbound（注入 domain_strategy 和绑定地址）
     for relay_json in "${RELAY_JSONS[@]}"; do
+        if [[ -n "$relay_domain_strategy" ]]; then
+            relay_json=$(echo "$relay_json" | jq --arg ds "$relay_domain_strategy" \
+                '. + {"domain_strategy": $ds}' 2>/dev/null || echo "$relay_json")
+        fi
+        if [[ -n "$relay_bind_fields" ]]; then
+            local bind_json
+            bind_json=$(echo "{$relay_bind_fields}" | jq . 2>/dev/null)
+            if [[ -n "$bind_json" ]]; then
+                relay_json=$(echo "$relay_json" | jq --argjson bind "$bind_json" '. + $bind' 2>/dev/null || echo "$relay_json")
+            fi
+        fi
         outbounds_array+=("$relay_json")
     done
 
