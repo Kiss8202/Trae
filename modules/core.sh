@@ -78,8 +78,8 @@ SOCKS_USER=""
 SOCKS_PASS=""
 
 # 默认SNI
-DEFAULT_SNI="www.oracle.com"
-DEFAULT_SNI1="www.oracle.com,www.mozilla.org"
+DEFAULT_SNI="www.notion.so"
+DEFAULT_SNI1="www.notion.so,www.atlassian.com"
 
 # Alpine 标记
 ALPINE=0
