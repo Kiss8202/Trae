@@ -35,6 +35,7 @@ setup_reality() {
   \"tls\": {
     \"enabled\": true,
     \"server_name\": \"${SNI}\",
+    \"min_version\": \"1.3\",
     \"reality\": {
       \"enabled\": true,
       \"handshake\": {\"server\": \"${SNI}\", \"server_port\": 443},
@@ -170,6 +171,7 @@ setup_hysteria2() {
   \"tls\": {
     \"enabled\": true,
     \"alpn\": [\"h3\"],
+    \"min_version\": \"1.3\",
     \"server_name\": \"${HY2_SNI}\",
     \"certificate_path\": \"${CERT_DIR}/${HY2_SNI}/cert.pem\",
     \"key_path\": \"${CERT_DIR}/${HY2_SNI}/private.key\"
@@ -449,6 +451,8 @@ setup_https() {
   \"users\": [{\"uuid\": \"${NODE_UUID}\"}],
   \"tls\": {
     \"enabled\": true,
+    \"alpn\": [\"h2\", \"http/1.1\"],
+    \"min_version\": \"1.3\",
     \"server_name\": \"${HTTPS_SNI}\",
     \"certificate_path\": \"${CERT_DIR}/${HTTPS_SNI}/cert.pem\",
     \"key_path\": \"${CERT_DIR}/${HTTPS_SNI}/private.key\"
@@ -574,6 +578,7 @@ setup_anytls() {
   \"tls\": {
     \"enabled\": true,
     \"server_name\": \"${ANYTLS_SNI}\",
+    \"min_version\": \"1.3\",
     \"reality\": {
       \"enabled\": true,
       \"handshake\": {
@@ -617,6 +622,7 @@ setup_anytls() {
       "tls": {
         "enabled": true,
         "server_name": "${ANYTLS_SNI}",
+        "min_version": "1.3",
         "utls": { "enabled": true, "fingerprint": "${UTLS_FINGERPRINT}" },
         "reality": {
           "enabled": true,
@@ -668,6 +674,7 @@ EOF
       "tls": {
         "enabled": true,
         "server_name": "${ANYTLS_SNI}",
+        "min_version": "1.3",
         "utls": { "enabled": true, "fingerprint": "${UTLS_FINGERPRINT}" },
         "reality": {
           "enabled": true,
@@ -700,6 +707,8 @@ EOF
   \"padding_scheme\": ${padding_config},
   \"tls\": {
     \"enabled\": true,
+    \"alpn\": [\"h2\", \"http/1.1\"],
+    \"min_version\": \"1.3\",
     \"server_name\": \"${ANYTLS_SNI}\",
     \"certificate_path\": \"${CERT_DIR}/${ANYTLS_SNI}/cert.pem\",
     \"key_path\": \"${CERT_DIR}/${ANYTLS_SNI}/private.key\"
@@ -735,6 +744,8 @@ EOF
       "tls": {
         "enabled": true,
         "server_name": "${ANYTLS_SNI}",
+        "alpn": ["h2", "http/1.1"],
+        "min_version": "1.3",
         "certificate_path": ["${CERT_DIR}/${ANYTLS_SNI}/cert.pem"],
         "utls": { "enabled": true, "fingerprint": "${UTLS_FINGERPRINT}" }
       }
@@ -787,6 +798,8 @@ EOF
       "tls": {
         "enabled": true,
         "server_name": "${ANYTLS_SNI}",
+        "alpn": ["h2", "http/1.1"],
+        "min_version": "1.3",
         "certificate_path": ["${CERT_DIR}/${ANYTLS_SNI}/cert.pem"],
         "utls": { "enabled": true, "fingerprint": "${UTLS_FINGERPRINT}" }
       }

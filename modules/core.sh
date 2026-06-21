@@ -252,6 +252,7 @@ generate_shadowtls_client_config() {
       "tls": {
         "enabled": true,
         "server_name": "${sni}",
+        "min_version": "1.3",
         "utls": {"enabled": true, "fingerprint": "chrome"}
       }
     },

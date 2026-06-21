@@ -539,7 +539,8 @@ parse_vmess_link() {
         fi
         tls_config=",
   \"tls\": {
-    \"enabled\": true${sni_config}${alpn_config}
+    \"enabled\": true${sni_config}${alpn_config},
+    \"min_version\": \"1.3\"
   }"
     fi
     
@@ -615,6 +616,8 @@ parse_vless_link() {
   \"tls\": {
     \"enabled\": true,
     \"server_name\": \"${sni}\",
+    \"alpn\": [\"h2\", \"http/1.1\"],
+    \"min_version\": \"1.3\",
     \"utls\": {\"enabled\": true, \"fingerprint\": \"chrome\"}
   }"
     elif [[ "$security" == "reality" ]]; then
@@ -626,6 +629,7 @@ parse_vless_link() {
   \"tls\": {
     \"enabled\": true,
     \"server_name\": \"${sni}\",
+    \"min_version\": \"1.3\",
     \"utls\": {\"enabled\": true, \"fingerprint\": \"chrome\"},
     \"reality\": {
       \"enabled\": true,
@@ -725,6 +729,8 @@ parse_trojan_link() {
     local tls_config=",
   \"tls\": {
     \"enabled\": true${sni_config}${utls_config},
+    \"alpn\": [\"h2\", \"http/1.1\"],
+    \"min_version\": \"1.3\",
     \"insecure\": ${insecure_bool}
   }"
     
@@ -830,6 +836,8 @@ parse_hysteria2_link() {
     local tls_config="{
     \"enabled\": true,
     \"server_name\": \"${sni}\",
+    \"alpn\": [\"h3\"],
+    \"min_version\": \"1.3\",
     \"insecure\": ${insecure_bool}
   }"
     local obfs_config=""
@@ -927,6 +935,7 @@ parse_anytls_link() {
   \"tls\": {
     \"enabled\": true,
     \"server_name\": \"${sni}\"${utls_config},
+    \"min_version\": \"1.3\",
     \"reality\": {
       \"enabled\": true,
       \"public_key\": \"${pbk}\",
@@ -938,6 +947,8 @@ parse_anytls_link() {
   \"tls\": {
     \"enabled\": true,
     \"server_name\": \"${sni}\",
+    \"alpn\": [\"h2\", \"http/1.1\"],
+    \"min_version\": \"1.3\",
     \"insecure\": ${insecure_bool}
   }"
     fi
