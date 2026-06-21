@@ -746,7 +746,7 @@ EOF
         "server_name": "${ANYTLS_SNI}",
         "alpn": ["h2", "http/1.1"],
         "min_version": "1.3",
-        "certificate_path": ["${CERT_DIR}/${ANYTLS_SNI}/cert.pem"],
+        "insecure": true,
         "utls": { "enabled": true, "fingerprint": "${UTLS_FINGERPRINT}" }
       }
     },
@@ -800,7 +800,7 @@ EOF
         "server_name": "${ANYTLS_SNI}",
         "alpn": ["h2", "http/1.1"],
         "min_version": "1.3",
-        "certificate_path": ["${CERT_DIR}/${ANYTLS_SNI}/cert.pem"],
+        "insecure": true,
         "utls": { "enabled": true, "fingerprint": "${UTLS_FINGERPRINT}" }
       }
     },
