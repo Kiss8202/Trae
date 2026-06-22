@@ -797,15 +797,10 @@ delete_all_nodes() {
     INBOUND_PROTOS=()
     INBOUND_SNIS=()
     INBOUND_RELAY_TAGS=()
-    
-    # 根据出站模式设置 DNS 策略
-    local dns_strategy="prefer_ipv4"
-    [[ "$OUTBOUND_IP_MODE" == "ipv6" ]] && dns_strategy="prefer_ipv6"
-    [[ "$OUTBOUND_IP_MODE" == "ipv6_only" ]] && dns_strategy="ipv6_only"
 
-    # 根据用户配置的 DNS 模式生成远程 DNS 服务器配置
-    local dns_remote_server
-    dns_remote_server=$(build_dns_remote_server)
+    # 使用 build_dns_config 生成完整 DNS 配置（包含自定义 DNS 和分流规则）
+    local dns_json
+    dns_json=$(build_dns_config)
 
     # 1.12.0+ 支持 default_domain_resolver
     # 1.14.0+ 强制要求：所有使用域名的 outbound 必须有 domain_resolver
@@ -822,17 +817,7 @@ delete_all_nodes() {
     "level": "info",
     "timestamp": true
   },
-  "dns": {
-    "servers": [
-      {
-        "tag": "local",
-        "type": "local"
-      },
-      ${dns_remote_server}
-    ],
-    "final": "remote",
-    "strategy": "${dns_strategy}"
-  },
+  "dns": ${dns_json},
   "inbounds": [],
   "outbounds": [
     {
@@ -1064,6 +1049,76 @@ build_dns_config() {
     local dns_remote_server
     dns_remote_server=$(build_dns_remote_server)
 
+    # 加载自定义 DNS 服务器和分流规则
+    load_dns_servers_from_file
+    load_dns_routes_from_file
+
+    # 构建自定义 DNS 服务器 JSON
+    local custom_dns_servers=""
+    for entry in "${DNS_SERVERS[@]}"; do
+        IFS='|' read -r tag type server desc <<< "$entry"
+        local dns_server_json=""
+        case "$type" in
+            "doh")
+                if [[ $SB_GE_1_12 -eq 1 ]]; then
+                    dns_server_json="{\"tag\": \"${tag}\", \"type\": \"https\", \"server\": \"${server}\", \"server_port\": 443, \"domain_resolver\": \"local\"}"
+                else
+                    dns_server_json="{\"tag\": \"${tag}\", \"type\": \"https\", \"server\": \"${server}\", \"server_port\": 443, \"address_resolver\": \"local\"}"
+                fi
+                ;;
+            "dot")
+                if [[ $SB_GE_1_12 -eq 1 ]]; then
+                    dns_server_json="{\"tag\": \"${tag}\", \"type\": \"tls\", \"server\": \"${server}\", \"server_port\": 853, \"domain_resolver\": \"local\"}"
+                else
+                    dns_server_json="{\"tag\": \"${tag}\", \"type\": \"tls\", \"server\": \"${server}\", \"server_port\": 853, \"address_resolver\": \"local\"}"
+                fi
+                ;;
+            "udp"|*)
+                dns_server_json="{\"tag\": \"${tag}\", \"type\": \"udp\", \"server\": \"${server}\"}"
+                ;;
+        esac
+        if [[ -n "$custom_dns_servers" ]]; then
+            custom_dns_servers+="
+      ,${dns_server_json}"
+        else
+            custom_dns_servers="
+      ${dns_server_json}"
+        fi
+    done
+
+    # 构建 DNS 分流规则 JSON
+    local dns_rules=""
+    for route in "${DNS_ROUTES[@]}"; do
+        IFS='|' read -r match_type match_value dns_tag desc <<< "$route"
+        local rule_json=""
+
+        if [[ "$match_type" == "inbound" ]]; then
+            # 节点级 DNS 分流
+            rule_json="{\"inbound\": [\"${match_value}\"], \"server\": \"${dns_tag}\"}"
+        else
+            # 域名级 DNS 分流（支持逗号分隔多个域名）
+            local rule_field=""
+            case "$match_type" in
+                domain_suffix)  rule_field="domain_suffix" ;;
+                domain)         rule_field="domain" ;;
+                domain_keyword) rule_field="domain_keyword" ;;
+                *)              continue ;;
+            esac
+
+            # 将逗号分隔的域名转为 JSON 数组
+            local domains_json=$(echo "$match_value" | awk -F',' '{for(i=1;i<=NF;i++){gsub(/^ +| +$/,"",$i);printf "\"%s\"", $i; if(i<NF) printf ","}}')
+            rule_json="{\"${rule_field}\": [${domains_json}], \"server\": \"${dns_tag}\"}"
+        fi
+
+        if [[ -n "$dns_rules" ]]; then
+            dns_rules+="
+      ,${rule_json}"
+        else
+            dns_rules="
+      ${rule_json}"
+        fi
+    done
+
     # 1.14.0+ 支持 optimistic DNS 缓存，降低 DNS 延迟
     local dns_optimistic=""
     if [[ $SB_GE_1_14 -eq 1 ]]; then
@@ -1071,32 +1126,25 @@ build_dns_config() {
     \"optimistic\": true"
     fi
 
-    local dns_json
-    if [[ $SB_GE_1_12 -eq 1 ]]; then
-        dns_json="{
+    # 构建 DNS rules 部分
+    local dns_rules_section=""
+    if [[ -n "$dns_rules" ]]; then
+        dns_rules_section="
+    \"rules\": [${dns_rules}
+    ],"
+    fi
+
+    local dns_json="{
     \"servers\": [
       {
         \"tag\": \"local\",
         \"type\": \"local\"
       },
-      ${dns_remote_server}
+      ${dns_remote_server}${custom_dns_servers}
     ],
-    \"final\": \"remote\",
+    ${dns_rules_section}\"final\": \"remote\",
     \"strategy\": \"${dns_strategy}\"${dns_optimistic}
   }"
-    else
-        dns_json="{
-    \"servers\": [
-      {
-        \"tag\": \"local\",
-        \"type\": \"local\"
-      },
-      ${dns_remote_server}
-    ],
-    \"final\": \"remote\",
-    \"strategy\": \"${dns_strategy}\"
-  }"
-    fi
 
     echo "$dns_json"
 }

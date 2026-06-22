@@ -58,6 +58,12 @@ RELAY_FILE="/etc/sing-box/relays.conf"
 DOMAIN_ROUTES=()     # 分流规则数组: 入站标签|匹配类型|匹配值|中转标签|描述
 DOMAIN_ROUTE_FILE="/etc/sing-box/domain_routes.conf"
 
+# DNS 分流配置
+DNS_SERVERS=()       # 自定义 DNS 服务器数组: TAG|TYPE|SERVER|DESCRIPTION
+DNS_ROUTES=()        # DNS 分流规则数组: MATCH_TYPE|MATCH_VALUE|DNS_TAG|DESCRIPTION
+DNS_SERVERS_FILE="/etc/sing-box/dns_servers.conf"
+DNS_ROUTES_FILE="/etc/sing-box/dns_routes.conf"
+
 # 节点数组
 INBOUND_TAGS=()
 INBOUND_PORTS=()
