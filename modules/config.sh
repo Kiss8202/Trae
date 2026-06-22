@@ -1134,13 +1134,19 @@ build_dns_config() {
     ],"
     fi
 
+    # 拼接 DNS servers 列表：remote 后面加逗号，再接自定义 DNS
+    local dns_servers_list="${dns_remote_server}"
+    if [[ -n "$custom_dns_servers" ]]; then
+        dns_servers_list+=",${custom_dns_servers}"
+    fi
+
     local dns_json="{
     \"servers\": [
       {
         \"tag\": \"local\",
         \"type\": \"local\"
       },
-      ${dns_remote_server}${custom_dns_servers}
+      ${dns_servers_list}
     ],
     ${dns_rules_section}\"final\": \"remote\",
     \"strategy\": \"${dns_strategy}\"${dns_optimistic}
