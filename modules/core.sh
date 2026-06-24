@@ -1,6 +1,6 @@
 # ==================== sing-box 管理脚本模块 ====================
 # 模块版本号，用于检查模块是否需要更新
-MODULE_VERSION="1.3"
+MODULE_VERSION="1.4"
 
 # ==================== 颜色定义 ====================
 RED='\033[0;31m'
@@ -108,13 +108,13 @@ fi
 # 功能: 原子性更新配置文件，先写临时文件再替换，失败时保留原文件
 jq_update_config() {
     local tmp_file
-    tmp_file=$(mktemp) || { print_error "创建临时文件失败"; return 1; }
+    tmp_file=$(mktemp) || { print_error "创建临时文件失败" >&2; return 1; }
     if jq "$@" "${CONFIG_FILE}" > "$tmp_file" && [[ -s "$tmp_file" ]]; then
         mv "$tmp_file" "${CONFIG_FILE}"
         return 0
     else
         rm -f "$tmp_file"
-        print_error "配置修改失败"
+        print_error "配置修改失败" >&2
         return 1
     fi
 }

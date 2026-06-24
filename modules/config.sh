@@ -158,22 +158,22 @@ _modify_port_common() {
     local port="$3"
     local tag_prefix="$4"
 
-    echo -e "${YELLOW}新端口 (留空随机分配)${NC}"
+    echo -e "${YELLOW}新端口 (留空随机分配)${NC}" >&2
     read -p "端口: " new_port
     if [[ -z "$new_port" ]]; then
         new_port=$(get_random_free_port)
-        [[ -z "$new_port" ]] && { print_error "无法获取随机端口"; return 1; }
+        [[ -z "$new_port" ]] && { print_error "无法获取随机端口" >&2; return 1; }
     fi
     if ! [[ "$new_port" =~ ^[0-9]+$ ]] || (( new_port < 1 || new_port > 65535 )); then
-        print_error "端口无效"; return 1
+        print_error "端口无效" >&2; return 1
     fi
     if check_port_in_use "$new_port" && [[ "$new_port" != "$port" ]]; then
-        print_warning "端口 ${new_port} 已被占用"; return 1
+        print_warning "端口 ${new_port} 已被占用" >&2; return 1
     fi
     local new_tag=$(modify_port "$tag" "$tag_prefix" "$new_port")
     INBOUND_TAGS[$array_idx]="$new_tag"
     INBOUND_PORTS[$array_idx]="$new_port"
-    print_success "端口已修改为 ${new_port}"
+    print_success "端口已修改为 ${new_port}" >&2
     echo "${new_tag} ${new_port}"
     return 0
 }
@@ -184,12 +184,12 @@ _modify_menu_Reality() {
 
     while true; do
         echo ""
-        echo -e "${CYAN}修改 Reality 节点 ${tag}:${NC}"
-        echo -e "  ${GREEN}[1]${NC} 修改端口 (当前: ${port})"
-        echo -e "  ${GREEN}[2]${NC} 修改 SNI (当前: ${current_sni})"
-        echo -e "  ${GREEN}[3]${NC} 重新生成 UUID"
-        echo -e "  ${GREEN}[4]${NC} 重新生成 Short ID"
-        echo -e "  ${GREEN}[0]${NC} 返回"
+        printf "${CYAN}修改 Reality 节点 %s:${NC}\n" "$tag"
+        printf "  ${GREEN}[1]${NC} 修改端口 (当前: %s)\n" "$port"
+        printf "  ${GREEN}[2]${NC} 修改 SNI (当前: %s)\n" "$current_sni"
+        printf "  ${GREEN}[3]${NC} 重新生成 UUID\n"
+        printf "  ${GREEN}[4]${NC} 重新生成 Short ID\n"
+        printf "  ${GREEN}[0]${NC} 返回\n"
         read -p "请选择: " mod_choice
 
         case $mod_choice in
@@ -240,12 +240,12 @@ _modify_menu_Hysteria2() {
 
     while true; do
         echo ""
-        echo -e "${CYAN}修改 Hysteria2 节点 ${tag}:${NC}"
-        echo -e "  ${GREEN}[1]${NC} 修改端口 (当前: ${port})"
-        echo -e "  ${GREEN}[2]${NC} 修改 SNI (当前: ${current_sni})"
-        echo -e "  ${GREEN}[3]${NC} 重新生成密码"
-        echo -e "  ${GREEN}[4]${NC} 重新生成混淆密码"
-        echo -e "  ${GREEN}[0]${NC} 返回"
+        printf "${CYAN}修改 Hysteria2 节点 %s:${NC}\n" "$tag"
+        printf "  ${GREEN}[1]${NC} 修改端口 (当前: %s)\n" "$port"
+        printf "  ${GREEN}[2]${NC} 修改 SNI (当前: %s)\n" "$current_sni"
+        printf "  ${GREEN}[3]${NC} 重新生成密码\n"
+        printf "  ${GREEN}[4]${NC} 重新生成混淆密码\n"
+        printf "  ${GREEN}[0]${NC} 返回\n"
         read -p "请选择: " mod_choice
 
         case $mod_choice in
@@ -300,11 +300,11 @@ _modify_menu_SOCKS5() {
 
     while true; do
         echo ""
-        echo -e "${CYAN}修改 SOCKS5 节点 ${tag}:${NC}"
-        echo -e "  ${GREEN}[1]${NC} 修改端口 (当前: ${port})"
-        echo -e "  ${GREEN}[2]${NC} 修改用户名 (当前: ${current_user:-无})"
-        echo -e "  ${GREEN}[3]${NC} 重新生成密码"
-        echo -e "  ${GREEN}[0]${NC} 返回"
+        printf "${CYAN}修改 SOCKS5 节点 %s:${NC}\n" "$tag"
+        printf "  ${GREEN}[1]${NC} 修改端口 (当前: %s)\n" "$port"
+        printf "  ${GREEN}[2]${NC} 修改用户名 (当前: %s)\n" "${current_user:-无}"
+        printf "  ${GREEN}[3]${NC} 重新生成密码\n"
+        printf "  ${GREEN}[0]${NC} 返回\n"
         read -p "请选择: " mod_choice
 
         case $mod_choice in
@@ -349,12 +349,12 @@ _modify_menu_ShadowTLS() {
 
     while true; do
         echo ""
-        echo -e "${CYAN}修改 ShadowTLS 节点 ${tag}:${NC}"
-        echo -e "  ${GREEN}[1]${NC} 修改端口 (当前: ${port})"
-        echo -e "  ${GREEN}[2]${NC} 修改 SNI (当前: ${current_sni})"
-        echo -e "  ${GREEN}[3]${NC} 重新生成 ShadowTLS 密码"
-        echo -e "  ${GREEN}[4]${NC} 重新生成 SS 密码"
-        echo -e "  ${GREEN}[0]${NC} 返回"
+        printf "${CYAN}修改 ShadowTLS 节点 %s:${NC}\n" "$tag"
+        printf "  ${GREEN}[1]${NC} 修改端口 (当前: %s)\n" "$port"
+        printf "  ${GREEN}[2]${NC} 修改 SNI (当前: %s)\n" "$current_sni"
+        printf "  ${GREEN}[3]${NC} 重新生成 ShadowTLS 密码\n"
+        printf "  ${GREEN}[4]${NC} 重新生成 SS 密码\n"
+        printf "  ${GREEN}[0]${NC} 返回\n"
         read -p "请选择: " mod_choice
 
         case $mod_choice in
@@ -434,11 +434,11 @@ _modify_menu_HTTPS() {
 
     while true; do
         echo ""
-        echo -e "${CYAN}修改 HTTPS 节点 ${tag}:${NC}"
-        echo -e "  ${GREEN}[1]${NC} 修改端口 (当前: ${port})"
-        echo -e "  ${GREEN}[2]${NC} 修改 SNI (当前: ${current_sni})"
-        echo -e "  ${GREEN}[3]${NC} 重新生成 UUID"
-        echo -e "  ${GREEN}[0]${NC} 返回"
+        printf "${CYAN}修改 HTTPS 节点 %s:${NC}\n" "$tag"
+        printf "  ${GREEN}[1]${NC} 修改端口 (当前: %s)\n" "$port"
+        printf "  ${GREEN}[2]${NC} 修改 SNI (当前: %s)\n" "$current_sni"
+        printf "  ${GREEN}[3]${NC} 重新生成 UUID\n"
+        printf "  ${GREEN}[0]${NC} 返回\n"
         read -p "请选择: " mod_choice
 
         case $mod_choice in
@@ -492,11 +492,11 @@ _modify_menu_AnyTLS() {
 
     while true; do
         echo ""
-        echo -e "${CYAN}修改 ${proto} 节点 ${tag}:${NC}"
-        echo -e "  ${GREEN}[1]${NC} 修改端口 (当前: ${port})"
-        echo -e "  ${GREEN}[2]${NC} 修改 SNI (当前: ${current_sni})"
-        echo -e "  ${GREEN}[3]${NC} 重新生成密码"
-        echo -e "  ${GREEN}[0]${NC} 返回"
+        printf "${CYAN}修改 %s 节点 %s:${NC}\n" "$proto" "$tag"
+        printf "  ${GREEN}[1]${NC} 修改端口 (当前: %s)\n" "$port"
+        printf "  ${GREEN}[2]${NC} 修改 SNI (当前: %s)\n" "$current_sni"
+        printf "  ${GREEN}[3]${NC} 重新生成密码\n"
+        printf "  ${GREEN}[0]${NC} 返回\n"
         read -p "请选择: " mod_choice
 
         case $mod_choice in
