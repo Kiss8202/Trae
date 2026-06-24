@@ -178,78 +178,6 @@ _modify_port_common() {
     return 0
 }
 
-# 通用节点修改框架
-# 参数: proto_name [proto_name2...]  (INBOUND_PROTOS 匹配值，支持多个)
-# 环境变量: _GENERIC_SHOW_SNI=0 时不显示SNI, _GENERIC_SHOW_PROTO=1 时额外显示协议名
-modify_node_generic() {
-    local proto_names=("$@")
-
-    if [[ ${#INBOUND_TAGS[@]} -eq 0 ]]; then
-        print_warning "当前没有可修改的节点"
-        return 1
-    fi
-
-    # 列出匹配协议的节点
-    local display_name="${proto_names[0]}"
-    echo ""
-    echo -e "${CYAN}当前 ${display_name} 节点:${NC}"
-    local matched_nodes=()
-    for i in "${!INBOUND_TAGS[@]}"; do
-        local proto="${INBOUND_PROTOS[$i]}"
-        for pn in "${proto_names[@]}"; do
-            if [[ "$proto" == "$pn" ]]; then
-                matched_nodes+=("$i")
-                if [[ "${_GENERIC_SHOW_PROTO:-0}" -eq 1 ]]; then
-                    echo -e "  ${GREEN}[${#matched_nodes[@]}]${NC} 协议: ${proto}, 端口: ${INBOUND_PORTS[$i]}, SNI: ${INBOUND_SNIS[$i]}, TAG: ${INBOUND_TAGS[$i]}"
-                elif [[ "${_GENERIC_SHOW_SNI:-1}" -eq 0 ]]; then
-                    echo -e "  ${GREEN}[${#matched_nodes[@]}]${NC} 端口: ${INBOUND_PORTS[$i]}, TAG: ${INBOUND_TAGS[$i]}"
-                else
-                    echo -e "  ${GREEN}[${#matched_nodes[@]}]${NC} 端口: ${INBOUND_PORTS[$i]}, SNI: ${INBOUND_SNIS[$i]}, TAG: ${INBOUND_TAGS[$i]}"
-                fi
-                break
-            fi
-        done
-    done
-
-    if [[ ${#matched_nodes[@]} -eq 0 ]]; then
-        print_warning "没有找到 ${display_name} 节点"
-        return 1
-    fi
-
-    # 选择节点
-    read -p "请选择要修改的节点序号 (0 取消): " node_choice
-    [[ "$node_choice" == "0" ]] && return 0
-    local idx=$((10#$node_choice-1))
-    if ! [[ "$node_choice" =~ ^[0-9]+$ ]] || (( idx < 0 || idx >= ${#matched_nodes[@]} )); then
-        print_error "序号无效"
-        return 1
-    fi
-
-    local array_idx="${matched_nodes[$idx]}"
-    local tag="${INBOUND_TAGS[$array_idx]}"
-    local port="${INBOUND_PORTS[$array_idx]}"
-    local current_sni="${INBOUND_SNIS[$array_idx]}"
-    local proto="${INBOUND_PROTOS[$array_idx]}"
-
-    # 调用协议特定的修改菜单（通过 echo 返回 config_changed 值）
-    local config_changed=0
-    case "$proto" in
-        Reality)        config_changed=$(_modify_menu_Reality "$array_idx" "$tag" "$port" "$current_sni" "$proto") ;;
-        Hysteria2)      config_changed=$(_modify_menu_Hysteria2 "$array_idx" "$tag" "$port" "$current_sni" "$proto") ;;
-        SOCKS5)         config_changed=$(_modify_menu_SOCKS5 "$array_idx" "$tag" "$port" "$current_sni" "$proto") ;;
-        "ShadowTLS v3") config_changed=$(_modify_menu_ShadowTLS "$array_idx" "$tag" "$port" "$current_sni" "$proto") ;;
-        HTTPS)          config_changed=$(_modify_menu_HTTPS "$array_idx" "$tag" "$port" "$current_sni" "$proto") ;;
-        AnyTLS|AnyTLS+REALITY) config_changed=$(_modify_menu_AnyTLS "$array_idx" "$tag" "$port" "$current_sni" "$proto") ;;
-    esac
-
-    # 修改完成后统一处理
-    if [[ $config_changed -eq 1 ]]; then
-        load_inbounds_from_config
-        generate_config && start_svc
-        regenerate_links_from_config
-    fi
-}
-
 # ==================== Reality 修改菜单 ====================
 _modify_menu_Reality() {
     local array_idx="$1" tag="$2" port="$3" current_sni="$4" proto="$5"
@@ -636,31 +564,6 @@ _modify_menu_AnyTLS() {
     done
 
     echo "$config_changed"
-}
-
-# ==================== 节点修改入口函数 ====================
-modify_reality_node() {
-    _GENERIC_SHOW_SNI=1 _GENERIC_SHOW_PROTO=0 modify_node_generic "Reality"
-}
-
-modify_hysteria2_node() {
-    _GENERIC_SHOW_SNI=1 _GENERIC_SHOW_PROTO=0 modify_node_generic "Hysteria2"
-}
-
-modify_socks5_node() {
-    _GENERIC_SHOW_SNI=0 _GENERIC_SHOW_PROTO=0 modify_node_generic "SOCKS5"
-}
-
-modify_shadowtls_node() {
-    _GENERIC_SHOW_SNI=1 _GENERIC_SHOW_PROTO=0 modify_node_generic "ShadowTLS v3"
-}
-
-modify_https_node() {
-    _GENERIC_SHOW_SNI=1 _GENERIC_SHOW_PROTO=0 modify_node_generic "HTTPS"
-}
-
-modify_anytls_node() {
-    _GENERIC_SHOW_SNI=1 _GENERIC_SHOW_PROTO=1 modify_node_generic "AnyTLS" "AnyTLS+REALITY"
 }
 
 # ==================== 节点删除功能 ====================

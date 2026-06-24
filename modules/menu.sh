@@ -208,29 +208,57 @@ modify_node_menu() {
         print_warning "当前没有可修改的节点"
         return 1
     fi
-    
+
+    # 直接列出所有节点，让用户选择
     echo ""
-    echo -e "${CYAN}请选择要修改的节点类型:${NC}"
-    echo -e "  ${GREEN}[1]${NC} Reality 节点"
-    echo -e "  ${GREEN}[2]${NC} Hysteria2 节点"
-    echo -e "  ${GREEN}[3]${NC} SOCKS5 节点"
-    echo -e "  ${GREEN}[4]${NC} ShadowTLS 节点"
-    echo -e "  ${GREEN}[5]${NC} HTTPS 节点"
-    echo -e "  ${GREEN}[6]${NC} AnyTLS 节点"
+    echo -e "${CYAN}当前所有节点:${NC}"
+    for i in "${!INBOUND_TAGS[@]}"; do
+        local idx=$((i+1))
+        local proto="${INBOUND_PROTOS[$i]}"
+        local port="${INBOUND_PORTS[$i]}"
+        local sni="${INBOUND_SNIS[$i]}"
+        local tag="${INBOUND_TAGS[$i]}"
+        if [[ -n "$sni" && "$sni" != "-" ]]; then
+            echo -e "  ${GREEN}[${idx}]${NC} ${proto} | 端口: ${port} | SNI: ${sni} | TAG: ${tag}"
+        else
+            echo -e "  ${GREEN}[${idx}]${NC} ${proto} | 端口: ${port} | TAG: ${tag}"
+        fi
+    done
+    echo ""
     echo -e "  ${GREEN}[0]${NC} 返回"
     echo ""
-    read -p "请选择: " mod_type
-    
-    case $mod_type in
-        1) modify_reality_node ;;
-        2) modify_hysteria2_node ;;
-        3) modify_socks5_node ;;
-        4) modify_shadowtls_node ;;
-        5) modify_https_node ;;
-        6) modify_anytls_node ;;
-        0) return 0 ;;
-        *) print_error "无效选项" ;;
+    read -p "请选择要修改的节点序号: " node_choice
+
+    [[ "$node_choice" == "0" ]] && return 0
+    if ! [[ "$node_choice" =~ ^[0-9]+$ ]] || (( node_choice < 1 || node_choice > ${#INBOUND_TAGS[@]} )); then
+        print_error "序号无效"
+        return 1
+    fi
+
+    local array_idx=$((node_choice-1))
+    local proto="${INBOUND_PROTOS[$array_idx]}"
+    local tag="${INBOUND_TAGS[$array_idx]}"
+    local port="${INBOUND_PORTS[$array_idx]}"
+    local current_sni="${INBOUND_SNIS[$array_idx]}"
+
+    # 根据协议类型跳转到对应的修改子菜单
+    local config_changed=0
+    case "$proto" in
+        Reality)        config_changed=$(_modify_menu_Reality "$array_idx" "$tag" "$port" "$current_sni" "$proto") ;;
+        Hysteria2)      config_changed=$(_modify_menu_Hysteria2 "$array_idx" "$tag" "$port" "$current_sni" "$proto") ;;
+        SOCKS5)         config_changed=$(_modify_menu_SOCKS5 "$array_idx" "$tag" "$port" "$current_sni" "$proto") ;;
+        "ShadowTLS v3") config_changed=$(_modify_menu_ShadowTLS "$array_idx" "$tag" "$port" "$current_sni" "$proto") ;;
+        HTTPS)          config_changed=$(_modify_menu_HTTPS "$array_idx" "$tag" "$port" "$current_sni" "$proto") ;;
+        AnyTLS|AnyTLS+REALITY) config_changed=$(_modify_menu_AnyTLS "$array_idx" "$tag" "$port" "$current_sni" "$proto") ;;
+        *)              print_warning "不支持的协议类型: ${proto}" ;;
     esac
+
+    # 修改完成后统一处理
+    if [[ $config_changed -eq 1 ]]; then
+        load_inbounds_from_config
+        generate_config && start_svc
+        regenerate_links_from_config
+    fi
 }
 
 # ==================== 配置查看菜单 ====================
