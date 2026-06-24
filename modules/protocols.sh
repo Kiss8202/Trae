@@ -14,7 +14,29 @@ setup_reality() {
         fi
         print_warning "请重新输入有效的域名格式"
     done
-    
+
+    # 询问回落目标（handshake destination）
+    local handshake_server="${SNI}"
+    local handshake_port=443
+    echo ""
+    echo -e "${YELLOW}是否自定义回落目标？(回车默认 ${SNI}:443)${NC}"
+    echo -e "${CYAN}说明: 回落目标决定主动探测时返回的内容，默认转发到 SNI 站点${NC}"
+    echo -e "${CYAN}自定义可指向本地 Web 服务，如 127.0.0.1:8085${NC}"
+    read -p "回落目标 [回车默认]: " custom_dest
+    if [[ -n "$custom_dest" ]]; then
+        if [[ "$custom_dest" == *:* ]]; then
+            handshake_server="${custom_dest%%:*}"
+            handshake_port="${custom_dest##*:}"
+        else
+            handshake_server="$custom_dest"
+        fi
+        if ! [[ "$handshake_port" =~ ^[0-9]+$ ]] || (( handshake_port < 1 || handshake_port > 65535 )); then
+            print_warning "端口无效，使用默认 443"
+            handshake_port=443
+        fi
+        print_info "回落目标: ${handshake_server}:${handshake_port}"
+    fi
+
     # 每个节点使用独立UUID
     local NODE_UUID=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null)
     if [[ -z "$NODE_UUID" ]]; then
@@ -38,7 +60,7 @@ setup_reality() {
     \"min_version\": \"1.3\",
     \"reality\": {
       \"enabled\": true,
-      \"handshake\": {\"server\": \"${SNI}\", \"server_port\": 443},
+      \"handshake\": {\"server\": \"${handshake_server}\", \"server_port\": ${handshake_port}},
       \"private_key\": \"${REALITY_PRIVATE}\",
       \"short_id\": [\"${SHORT_ID}\"]
     }

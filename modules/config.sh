@@ -182,6 +182,16 @@ _modify_port_common() {
 _modify_menu_Reality() {
     local array_idx="$1" tag="$2" port="$3" current_sni="$4" proto="$5"
 
+    # 读取当前回落目标
+    local current_hs_server=$(jq -r --arg tag "$tag" '(.inbounds[] | select(.tag == $tag)).tls.reality.handshake.server // ""' "${CONFIG_FILE}" 2>/dev/null)
+    local current_hs_port=$(jq -r --arg tag "$tag" '(.inbounds[] | select(.tag == $tag)).tls.reality.handshake.server_port // 443' "${CONFIG_FILE}" 2>/dev/null)
+    local current_handshake
+    if [[ -n "$current_hs_server" && "$current_hs_server" != "$current_sni" ]]; then
+        current_handshake="${current_hs_server}:${current_hs_port}"
+    else
+        current_handshake="默认 (${current_sni}:443)"
+    fi
+
     while true; do
         echo ""
         printf "${CYAN}修改 Reality 节点 %s:${NC}\n" "$tag"
@@ -189,6 +199,7 @@ _modify_menu_Reality() {
         printf "  ${GREEN}[2]${NC} 修改 SNI (当前: %s)\n" "$current_sni"
         printf "  ${GREEN}[3]${NC} 重新生成 UUID\n"
         printf "  ${GREEN}[4]${NC} 重新生成 Short ID\n"
+        printf "  ${GREEN}[5]${NC} 修改回落目标 (当前: %s)\n" "$current_handshake"
         printf "  ${GREEN}[0]${NC} 返回\n"
         read -p "请选择: " mod_choice
 
@@ -208,10 +219,23 @@ _modify_menu_Reality() {
                 if [[ -z "$new_sni" ]]; then
                     new_sni=$(get_random_sni)
                 fi
-                jq_update_config --arg tag "$tag" --arg sni "$new_sni" \
-                    '(.inbounds[] | select(.tag == $tag)) |= (.tls.server_name = $sni | .tls.reality.handshake.server = $sni)'
+                # 回落目标为默认时同步更新，自定义时只更新 server_name
+                if [[ "$current_hs_server" == "$current_sni" || -z "$current_hs_server" ]]; then
+                    jq_update_config --arg tag "$tag" --arg sni "$new_sni" \
+                        '(.inbounds[] | select(.tag == $tag)) |= (.tls.server_name = $sni | .tls.reality.handshake.server = $sni)'
+                    current_hs_server="$new_sni"
+                else
+                    jq_update_config --arg tag "$tag" --arg sni "$new_sni" \
+                        '(.inbounds[] | select(.tag == $tag)) |= (.tls.server_name = $sni)'
+                fi
                 INBOUND_SNIS[$array_idx]="$new_sni"
                 current_sni="$new_sni"
+                # 更新回落目标显示
+                if [[ "$current_hs_server" == "$current_sni" || -z "$current_hs_server" ]]; then
+                    current_handshake="默认 (${current_sni}:443)"
+                else
+                    current_handshake="${current_hs_server}:${current_hs_port}"
+                fi
                 _MODIFY_CONFIG_CHANGED=1
                 print_success "SNI 已修改为 ${new_sni}"
                 ;;
@@ -222,6 +246,39 @@ _modify_menu_Reality() {
             4)
                 regenerate_secret sid "$tag"
                 _MODIFY_CONFIG_CHANGED=1
+                ;;
+            5)
+                echo -e "${YELLOW}新回落目标 (回车恢复默认 ${current_sni}:443)${NC}"
+                echo -e "${CYAN}格式: server:port 或 server (默认端口443)${NC}"
+                echo -e "${CYAN}例如: 127.0.0.1:8085${NC}"
+                read -p "回落目标: " new_dest
+                if [[ -z "$new_dest" ]]; then
+                    # 恢复默认
+                    jq_update_config --arg tag "$tag" --arg server "$current_sni" --argjson port 443 \
+                        '(.inbounds[] | select(.tag == $tag)) |= (.tls.reality.handshake.server = $server | .tls.reality.handshake.server_port = $port)'
+                    current_hs_server="$current_sni"
+                    current_hs_port=443
+                    current_handshake="默认 (${current_sni}:443)"
+                    _MODIFY_CONFIG_CHANGED=1
+                    print_success "回落目标已恢复默认: ${current_sni}:443"
+                else
+                    local new_hs_server="${new_dest%%:*}"
+                    local new_hs_port="${new_dest##*:}"
+                    if [[ "$new_dest" != *:* ]]; then
+                        new_hs_server="$new_dest"
+                        new_hs_port=443
+                    fi
+                    if ! [[ "$new_hs_port" =~ ^[0-9]+$ ]] || (( new_hs_port < 1 || new_hs_port > 65535 )); then
+                        print_error "端口无效"; continue
+                    fi
+                    jq_update_config --arg tag "$tag" --arg server "$new_hs_server" --argjson port "$new_hs_port" \
+                        '(.inbounds[] | select(.tag == $tag)) |= (.tls.reality.handshake.server = $server | .tls.reality.handshake.server_port = $port)'
+                    current_hs_server="$new_hs_server"
+                    current_hs_port="$new_hs_port"
+                    current_handshake="${new_hs_server}:${new_hs_port}"
+                    _MODIFY_CONFIG_CHANGED=1
+                    print_success "回落目标已修改为: ${new_hs_server}:${new_hs_port}"
+                fi
                 ;;
             0)
                 break
