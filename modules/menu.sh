@@ -242,19 +242,19 @@ modify_node_menu() {
     local current_sni="${INBOUND_SNIS[$array_idx]}"
 
     # 根据协议类型跳转到对应的修改子菜单
-    local config_changed=0
+    _MODIFY_CONFIG_CHANGED=0
     case "$proto" in
-        Reality)        config_changed=$(_modify_menu_Reality "$array_idx" "$tag" "$port" "$current_sni" "$proto") ;;
-        Hysteria2)      config_changed=$(_modify_menu_Hysteria2 "$array_idx" "$tag" "$port" "$current_sni" "$proto") ;;
-        SOCKS5)         config_changed=$(_modify_menu_SOCKS5 "$array_idx" "$tag" "$port" "$current_sni" "$proto") ;;
-        "ShadowTLS v3") config_changed=$(_modify_menu_ShadowTLS "$array_idx" "$tag" "$port" "$current_sni" "$proto") ;;
-        HTTPS)          config_changed=$(_modify_menu_HTTPS "$array_idx" "$tag" "$port" "$current_sni" "$proto") ;;
-        AnyTLS|AnyTLS+REALITY) config_changed=$(_modify_menu_AnyTLS "$array_idx" "$tag" "$port" "$current_sni" "$proto") ;;
+        Reality)        _modify_menu_Reality "$array_idx" "$tag" "$port" "$current_sni" "$proto" ;;
+        Hysteria2)      _modify_menu_Hysteria2 "$array_idx" "$tag" "$port" "$current_sni" "$proto" ;;
+        SOCKS5)         _modify_menu_SOCKS5 "$array_idx" "$tag" "$port" "$current_sni" "$proto" ;;
+        "ShadowTLS v3") _modify_menu_ShadowTLS "$array_idx" "$tag" "$port" "$current_sni" "$proto" ;;
+        HTTPS)          _modify_menu_HTTPS "$array_idx" "$tag" "$port" "$current_sni" "$proto" ;;
+        AnyTLS|AnyTLS+REALITY) _modify_menu_AnyTLS "$array_idx" "$tag" "$port" "$current_sni" "$proto" ;;
         *)              print_warning "不支持的协议类型: ${proto}" ;;
     esac
 
     # 修改完成后统一处理
-    if [[ $config_changed -eq 1 ]]; then
+    if [[ ${_MODIFY_CONFIG_CHANGED:-0} -eq 1 ]]; then
         load_inbounds_from_config
         generate_config && start_svc
         regenerate_links_from_config

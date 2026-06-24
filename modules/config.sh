@@ -181,7 +181,6 @@ _modify_port_common() {
 # ==================== Reality 修改菜单 ====================
 _modify_menu_Reality() {
     local array_idx="$1" tag="$2" port="$3" current_sni="$4" proto="$5"
-    local config_changed=0
 
     while true; do
         echo ""
@@ -199,7 +198,7 @@ _modify_menu_Reality() {
                 port_result=$(_modify_port_common "$array_idx" "$tag" "$port" "vless-in-")
                 if [[ -n "$port_result" ]]; then
                     read -r tag port <<< "$port_result"
-                    config_changed=1
+                    _MODIFY_CONFIG_CHANGED=1
                 fi
                 ;;
             2)
@@ -213,16 +212,16 @@ _modify_menu_Reality() {
                     '(.inbounds[] | select(.tag == $tag)) |= (.tls.server_name = $sni | .tls.reality.handshake.server = $sni)'
                 INBOUND_SNIS[$array_idx]="$new_sni"
                 current_sni="$new_sni"
-                config_changed=1
+                _MODIFY_CONFIG_CHANGED=1
                 print_success "SNI 已修改为 ${new_sni}"
                 ;;
             3)
                 regenerate_secret uuid "$tag" || continue
-                config_changed=1
+                _MODIFY_CONFIG_CHANGED=1
                 ;;
             4)
                 regenerate_secret sid "$tag"
-                config_changed=1
+                _MODIFY_CONFIG_CHANGED=1
                 ;;
             0)
                 break
@@ -233,13 +232,11 @@ _modify_menu_Reality() {
         esac
     done
 
-    echo "$config_changed"
 }
 
 # ==================== Hysteria2 修改菜单 ====================
 _modify_menu_Hysteria2() {
     local array_idx="$1" tag="$2" port="$3" current_sni="$4" proto="$5"
-    local config_changed=0
 
     while true; do
         echo ""
@@ -257,7 +254,7 @@ _modify_menu_Hysteria2() {
                 port_result=$(_modify_port_common "$array_idx" "$tag" "$port" "hy2-in-")
                 if [[ -n "$port_result" ]]; then
                     read -r tag port <<< "$port_result"
-                    config_changed=1
+                    _MODIFY_CONFIG_CHANGED=1
                 fi
                 ;;
             2)
@@ -272,16 +269,16 @@ _modify_menu_Hysteria2() {
                 gen_cert_for_sni "${new_sni}"
                 INBOUND_SNIS[$array_idx]="$new_sni"
                 current_sni="$new_sni"
-                config_changed=1
+                _MODIFY_CONFIG_CHANGED=1
                 print_success "SNI 已修改为 ${new_sni}，证书已重新生成"
                 ;;
             3)
                 regenerate_secret password "$tag"
-                config_changed=1
+                _MODIFY_CONFIG_CHANGED=1
                 ;;
             4)
                 regenerate_secret obfs_password "$tag"
-                config_changed=1
+                _MODIFY_CONFIG_CHANGED=1
                 ;;
             0)
                 break
@@ -292,13 +289,11 @@ _modify_menu_Hysteria2() {
         esac
     done
 
-    echo "$config_changed"
 }
 
 # ==================== SOCKS5 修改菜单 ====================
 _modify_menu_SOCKS5() {
     local array_idx="$1" tag="$2" port="$3" current_sni="$4" proto="$5"
-    local config_changed=0
 
     # 读取当前用户名
     local current_user=$(jq -r --arg tag "$tag" '(.inbounds[] | select(.tag == $tag)).users[0].username // ""' "${CONFIG_FILE}")
@@ -318,7 +313,7 @@ _modify_menu_SOCKS5() {
                 port_result=$(_modify_port_common "$array_idx" "$tag" "$port" "socks-in-")
                 if [[ -n "$port_result" ]]; then
                     read -r tag port <<< "$port_result"
-                    config_changed=1
+                    _MODIFY_CONFIG_CHANGED=1
                 fi
                 ;;
             2)
@@ -330,12 +325,12 @@ _modify_menu_SOCKS5() {
                 jq_update_config --arg tag "$tag" --arg user "$new_user" \
                     '(.inbounds[] | select(.tag == $tag)) |= (.users[0].username = $user)'
                 current_user="$new_user"
-                config_changed=1
+                _MODIFY_CONFIG_CHANGED=1
                 print_success "用户名已修改为 ${new_user}"
                 ;;
             3)
                 regenerate_secret socks_password "$tag"
-                config_changed=1
+                _MODIFY_CONFIG_CHANGED=1
                 ;;
             0)
                 break
@@ -346,13 +341,11 @@ _modify_menu_SOCKS5() {
         esac
     done
 
-    echo "$config_changed"
 }
 
 # ==================== ShadowTLS 修改菜单 ====================
 _modify_menu_ShadowTLS() {
     local array_idx="$1" tag="$2" port="$3" current_sni="$4" proto="$5"
-    local config_changed=0
 
     while true; do
         echo ""
@@ -397,7 +390,7 @@ _modify_menu_ShadowTLS() {
                 INBOUND_PORTS[$array_idx]="$new_port"
                 tag="$new_stls_tag"
                 port="$new_port"
-                config_changed=1
+                _MODIFY_CONFIG_CHANGED=1
                 print_success "端口已修改为 ${new_port}，SS 标签和 detour 已同步更新"
                 ;;
             2)
@@ -411,18 +404,18 @@ _modify_menu_ShadowTLS() {
                     '(.inbounds[] | select(.tag == $tag)) |= (.handshake.server = $sni)'
                 INBOUND_SNIS[$array_idx]="$new_sni"
                 current_sni="$new_sni"
-                config_changed=1
+                _MODIFY_CONFIG_CHANGED=1
                 print_success "SNI 已修改为 ${new_sni}，handshake.server 已同步更新"
                 ;;
             3)
                 regenerate_secret stls_password "$tag"
-                config_changed=1
+                _MODIFY_CONFIG_CHANGED=1
                 print_success "ShadowTLS 密码已重新生成"
                 ;;
             4)
                 local ss_tag="shadowsocks-in-${port}"
                 regenerate_secret ss_password "$ss_tag"
-                config_changed=1
+                _MODIFY_CONFIG_CHANGED=1
                 ;;
             0)
                 break
@@ -433,13 +426,11 @@ _modify_menu_ShadowTLS() {
         esac
     done
 
-    echo "$config_changed"
 }
 
 # ==================== HTTPS 修改菜单 ====================
 _modify_menu_HTTPS() {
     local array_idx="$1" tag="$2" port="$3" current_sni="$4" proto="$5"
-    local config_changed=0
 
     while true; do
         echo ""
@@ -456,7 +447,7 @@ _modify_menu_HTTPS() {
                 port_result=$(_modify_port_common "$array_idx" "$tag" "$port" "vless-tls-in-")
                 if [[ -n "$port_result" ]]; then
                     read -r tag port <<< "$port_result"
-                    config_changed=1
+                    _MODIFY_CONFIG_CHANGED=1
                 fi
                 ;;
             2)
@@ -471,12 +462,12 @@ _modify_menu_HTTPS() {
                 gen_cert_for_sni "${new_sni}"
                 INBOUND_SNIS[$array_idx]="$new_sni"
                 current_sni="$new_sni"
-                config_changed=1
+                _MODIFY_CONFIG_CHANGED=1
                 print_success "SNI 已修改为 ${new_sni}，证书已重新生成"
                 ;;
             3)
                 regenerate_secret uuid "$tag" || continue
-                config_changed=1
+                _MODIFY_CONFIG_CHANGED=1
                 ;;
             0)
                 break
@@ -487,13 +478,11 @@ _modify_menu_HTTPS() {
         esac
     done
 
-    echo "$config_changed"
 }
 
 # ==================== AnyTLS 修改菜单 ====================
 _modify_menu_AnyTLS() {
     local array_idx="$1" tag="$2" port="$3" current_sni="$4" proto="$5"
-    local config_changed=0
 
     # 判断是否为 AnyTLS+REALITY 模式
     local is_reality=0
@@ -523,7 +512,7 @@ _modify_menu_AnyTLS() {
                 port_result=$(_modify_port_common "$array_idx" "$tag" "$port" "$new_tag_prefix")
                 if [[ -n "$port_result" ]]; then
                     read -r tag port <<< "$port_result"
-                    config_changed=1
+                    _MODIFY_CONFIG_CHANGED=1
                 fi
                 ;;
             2)
@@ -543,7 +532,7 @@ _modify_menu_AnyTLS() {
                 fi
                 INBOUND_SNIS[$array_idx]="$new_sni"
                 current_sni="$new_sni"
-                config_changed=1
+                _MODIFY_CONFIG_CHANGED=1
                 if [[ $is_reality -eq 1 ]]; then
                     print_success "SNI 已修改为 ${new_sni}，handshake.server 已同步更新"
                 else
@@ -552,7 +541,7 @@ _modify_menu_AnyTLS() {
                 ;;
             3)
                 regenerate_secret password "$tag"
-                config_changed=1
+                _MODIFY_CONFIG_CHANGED=1
                 ;;
             0)
                 break
@@ -563,7 +552,6 @@ _modify_menu_AnyTLS() {
         esac
     done
 
-    echo "$config_changed"
 }
 
 # ==================== 节点删除功能 ====================
