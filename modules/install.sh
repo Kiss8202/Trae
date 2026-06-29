@@ -80,11 +80,48 @@ install_singbox() {
         TEMP_FILES+=("/tmp/sb.tar.gz" "/tmp/sing-box-${LATEST}-linux-${ARCH}")
 
         print_info "下载 sing-box (${LATEST} linux-${ARCH}) ..."
-        wget -q --show-progress -O /tmp/sb.tar.gz \
-            "https://github.com/SagerNet/sing-box/releases/download/v${LATEST}/sing-box-${LATEST}-linux-${ARCH}.tar.gz" 2>&1
-        if [[ ! -f /tmp/sb.tar.gz ]]; then
+        local download_url="https://github.com/SagerNet/sing-box/releases/download/v${LATEST}/sing-box-${LATEST}-linux-${ARCH}.tar.gz"
+        wget -q --show-progress -O /tmp/sb.tar.gz "$download_url" 2>&1
+        if [[ ! -f /tmp/sb.tar.gz ]] || [[ ! -s /tmp/sb.tar.gz ]]; then
             print_error "下载失败，请检查网络后重新运行脚本"
             return 1
+        fi
+        # 验证下载的是 tar.gz 而非 404 HTML 页面
+        if command -v file &>/dev/null; then
+            local file_type=$(file -b /tmp/sb.tar.gz 2>/dev/null)
+            if [[ "$file_type" != *"gzip"* ]]; then
+                print_error "下载的文件无效（可能是版本 ${LATEST} 不存在），尝试使用已知稳定版本"
+                rm -f /tmp/sb.tar.gz
+                # 回退到已知稳定版本
+                LATEST="1.13.12"
+                download_url="https://github.com/SagerNet/sing-box/releases/download/v${LATEST}/sing-box-${LATEST}-linux-${ARCH}.tar.gz"
+                print_info "回退下载 sing-box (${LATEST} linux-${ARCH}) ..."
+                wget -q --show-progress -O /tmp/sb.tar.gz "$download_url" 2>&1
+                if [[ ! -f /tmp/sb.tar.gz ]] || [[ ! -s /tmp/sb.tar.gz ]]; then
+                    print_error "下载失败，请检查网络后重新运行脚本"
+                    return 1
+                fi
+                file_type=$(file -b /tmp/sb.tar.gz 2>/dev/null)
+                if [[ "$file_type" != *"gzip"* ]]; then
+                    print_error "下载的文件仍然无效，请检查网络或手动安装 sing-box"
+                    rm -f /tmp/sb.tar.gz
+                    return 1
+                fi
+            fi
+        else
+            # 没有 file 命令，用 tar 试解压来验证
+            if ! tar -tzf /tmp/sb.tar.gz >/dev/null 2>&1; then
+                print_error "下载的文件无效（可能是版本 ${LATEST} 不存在），尝试使用已知稳定版本"
+                rm -f /tmp/sb.tar.gz
+                LATEST="1.13.12"
+                download_url="https://github.com/SagerNet/sing-box/releases/download/v${LATEST}/sing-box-${LATEST}-linux-${ARCH}.tar.gz"
+                print_info "回退下载 sing-box (${LATEST} linux-${ARCH}) ..."
+                wget -q --show-progress -O /tmp/sb.tar.gz "$download_url" 2>&1
+                if [[ ! -f /tmp/sb.tar.gz ]] || [[ ! -s /tmp/sb.tar.gz ]]; then
+                    print_error "下载失败，请检查网络后重新运行脚本"
+                    return 1
+                fi
+            fi
         fi
 
         # 小内存机器解压时很可能被杀，解压前确保文件完整
