@@ -14,7 +14,7 @@ install_singbox() {
     if [[ ${#missing_deps[@]} -gt 0 ]]; then
         print_info "缺少依赖: ${missing_deps[*]}，开始安装..."
         if [[ $ALPINE -eq 1 ]]; then
-            for pkg in curl wget jq openssl util-linux coreutils iproute2; do
+            for pkg in curl wget jq openssl util-linux coreutils iproute2 gcompat; do
                 if ! apk add --no-cache "$pkg" >/dev/null 2>&1; then
                     print_warning "包 ${pkg} 安装失败，继续尝试其他包..."
                 fi
@@ -156,9 +156,28 @@ install_singbox() {
                 local exec_err
                 exec_err=$(${INSTALL_DIR}/sing-box version 2>&1) || true
                 echo -e "  执行错误: ${exec_err}"
-                # 检查内核版本（Go 1.21+ 要求 Linux 3.2+）
                 echo -e "  内核版本: $(uname -r)"
-                return 1
+
+                # Alpine 缺少 glibc 兼容层时自动尝试安装 gcompat
+                if [[ "$exec_err" == *"required file not found"* ]] && [[ $ALPINE -eq 1 ]]; then
+                    print_info "检测到缺少 glibc 动态链接器，尝试安装 gcompat 兼容层..."
+                    if apk add --no-cache gcompat libexecinfo >/dev/null 2>&1; then
+                        print_success "gcompat 安装成功，重新验证 sing-box ..."
+                        if ${INSTALL_DIR}/sing-box version >/dev/null 2>&1; then
+                            local version=$(${INSTALL_DIR}/sing-box version 2>&1 | awk '/sing-box version/{print $3}' || echo "unknown")
+                            print_success "sing-box 二进制安装完成 (版本: ${version})"
+                            # 跳过 return 1，继续正常流程
+                        else
+                            print_error "安装 gcompat 后仍然无法执行"
+                            return 1
+                        fi
+                    else
+                        print_error "gcompat 安装失败，请手动执行: apk add gcompat libexecinfo"
+                        return 1
+                    fi
+                else
+                    return 1
+                fi
             fi
         else
             print_error "解压后未找到 sing-box 二进制，请检查"
