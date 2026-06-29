@@ -144,9 +144,20 @@ install_singbox() {
                 local version=$(${INSTALL_DIR}/sing-box version 2>&1 | awk '/sing-box version/{print $3}' || echo "unknown")
                 print_success "sing-box 二进制安装完成 (版本: ${version})"
             else
-                # sing-box 默认构建是纯 Go 静态编译，不需要 glibc 兼容层
-                # 如果无法运行，说明架构不匹配或文件损坏
-                print_error "sing-box 安装后无法执行，可能架构不匹配或文件损坏"
+                # 输出详细诊断信息
+                print_error "sing-box 安装后无法执行，诊断信息："
+                echo -e "  系统架构: $(uname -m)"
+                echo -e "  下载架构: linux-${ARCH}"
+                echo -e "  文件大小: $(ls -l ${INSTALL_DIR}/sing-box 2>/dev/null | awk '{print $5}') bytes"
+                if command -v file &>/dev/null; then
+                    echo -e "  文件类型: $(file -b ${INSTALL_DIR}/sing-box 2>/dev/null)"
+                fi
+                # 尝试直接执行并捕获错误
+                local exec_err
+                exec_err=$(${INSTALL_DIR}/sing-box version 2>&1) || true
+                echo -e "  执行错误: ${exec_err}"
+                # 检查内核版本（Go 1.21+ 要求 Linux 3.2+）
+                echo -e "  内核版本: $(uname -r)"
                 return 1
             fi
         else
