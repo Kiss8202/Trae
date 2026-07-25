@@ -1,0 +1,3030 @@
+
+In install.sh line 35:
+if [[ -z "$GH_MIRROR" ]] && [[ -f "/etc/sing-box/ip_config.conf" ]]; then
+   ^-------------------^ SC3010 (warning): In POSIX sh, [[ ]] is undefined.
+                            ^-- SC3010 (warning): In POSIX sh, [[ ]] is undefined.
+
+
+In install.sh line 37:
+    [[ -n "$_saved_mirror" ]] && GH_MIRROR="$_saved_mirror"
+    ^-----------------------^ SC3010 (warning): In POSIX sh, [[ ]] is undefined.
+
+
+In install.sh line 48:
+GH_MIRRORS=(
+           ^-- SC3030 (warning): In POSIX sh, arrays are undefined.
+
+
+In install.sh line 56:
+    local base_url="$1"
+    ^------------^ SC3043 (warning): In POSIX sh, 'local' is undefined.
+
+
+In install.sh line 57:
+    local urls=("$base_url")
+    ^--------^ SC3043 (warning): In POSIX sh, 'local' is undefined.
+               ^-----------^ SC3030 (warning): In POSIX sh, arrays are undefined.
+
+
+In install.sh line 59:
+    if [[ -n "$GH_MIRROR" ]]; then
+       ^-------------------^ SC3010 (warning): In POSIX sh, [[ ]] is undefined.
+
+
+In install.sh line 60:
+        urls=("${GH_MIRROR}/${base_url}" "$base_url")
+             ^-- SC3030 (warning): In POSIX sh, arrays are undefined.
+
+
+In install.sh line 63:
+        for mirror in "${GH_MIRRORS[@]}"; do
+                       ^--------------^ SC3054 (warning): In POSIX sh, array references are undefined.
+
+
+In install.sh line 64:
+            urls+=("${mirror}/${base_url}")
+            ^--^ SC3024 (warning): In POSIX sh, += is undefined.
+                  ^-----------------------^ SC3030 (warning): In POSIX sh, arrays are undefined.
+
+
+In install.sh line 67:
+    echo "${urls[@]}"
+          ^--------^ SC3054 (warning): In POSIX sh, array references are undefined.
+
+
+In install.sh line 72:
+    local output_file="$1"
+    ^---------------^ SC3043 (warning): In POSIX sh, 'local' is undefined.
+
+
+In install.sh line 74:
+    local urls=("$@")
+    ^--------^ SC3043 (warning): In POSIX sh, 'local' is undefined.
+               ^----^ SC3030 (warning): In POSIX sh, arrays are undefined.
+
+
+In install.sh line 75:
+    for url in "${urls[@]}"; do
+                ^--------^ SC3054 (warning): In POSIX sh, array references are undefined.
+
+
+In install.sh line 85:
+    local tmp_file=$(mktemp /tmp/sb-modules.XXXXXX.tar.gz)
+    ^------------^ SC3043 (warning): In POSIX sh, 'local' is undefined.
+          ^------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+                   ^-- SC2046 (warning): Quote this to prevent word splitting.
+
+
+In install.sh line 86:
+    echo -n "[引导] 下载模块压缩包 ... "
+         ^-- SC3037 (warning): In POSIX sh, echo flags are undefined.
+
+
+In install.sh line 88:
+    local release_urls=($(build_download_urls "$GH_RELEASE_URL"))
+    ^----------------^ SC3043 (warning): In POSIX sh, 'local' is undefined.
+                       ^-- SC3030 (warning): In POSIX sh, arrays are undefined.
+                        ^-- SC2046 (warning): Quote this to prevent word splitting.
+                        ^-- SC2207 (warning): Prefer mapfile or read -a to split command output (or quote to avoid splitting).
+
+
+In install.sh line 89:
+    if multi_source_download "${tmp_file}" "${release_urls[@]}"; then
+                                            ^----------------^ SC3054 (warning): In POSIX sh, array references are undefined.
+
+
+In install.sh line 118:
+        echo -n "[引导] 下载模块 ${module}.sh ... "
+             ^-- SC3037 (warning): In POSIX sh, echo flags are undefined.
+
+
+In install.sh line 119:
+        local raw_urls=($(build_download_urls "${GH_RAW_URL}/${module}.sh"))
+        ^------------^ SC3043 (warning): In POSIX sh, 'local' is undefined.
+                       ^-- SC3030 (warning): In POSIX sh, arrays are undefined.
+                        ^-- SC2046 (warning): Quote this to prevent word splitting.
+                        ^-- SC2207 (warning): Prefer mapfile or read -a to split command output (or quote to avoid splitting).
+
+
+In install.sh line 120:
+        local tmp_mod
+        ^-----------^ SC3043 (warning): In POSIX sh, 'local' is undefined.
+
+
+In install.sh line 122:
+        if multi_source_download "${tmp_mod}" "${raw_urls[@]}"; then
+                                               ^------------^ SC3054 (warning): In POSIX sh, array references are undefined.
+
+
+In install.sh line 124:
+            if [[ ! -s "${tmp_mod}" ]] || ! head -1 "${tmp_mod}" | grep -qE '^#!|^#'; then
+               ^---------------------^ SC3010 (warning): In POSIX sh, [[ ]] is undefined.
+
+
+In install.sh line 144:
+    local CURRENT_VERSION=""
+    ^-------------------^ SC3043 (warning): In POSIX sh, 'local' is undefined.
+
+
+In install.sh line 145:
+    if [[ -f "${MODULES_DIR}/core.sh" ]]; then
+       ^-- SC3010 (warning): In POSIX sh, [[ ]] is undefined.
+
+
+In install.sh line 148:
+    local REMOTE_VERSION=""
+    ^------------------^ SC3043 (warning): In POSIX sh, 'local' is undefined.
+
+
+In install.sh line 149:
+    local raw_urls=($(build_download_urls "${GH_RAW_URL}/core.sh"))
+    ^------------^ SC3043 (warning): In POSIX sh, 'local' is undefined.
+                   ^-- SC3030 (warning): In POSIX sh, arrays are undefined.
+                    ^-- SC2046 (warning): Quote this to prevent word splitting.
+                    ^-- SC2207 (warning): Prefer mapfile or read -a to split command output (or quote to avoid splitting).
+
+
+In install.sh line 150:
+    local tmp_ver=$(mktemp /tmp/sb-ver.XXXXXX)
+    ^-----------^ SC3043 (warning): In POSIX sh, 'local' is undefined.
+          ^-----^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+                  ^--------------------------^ SC2046 (warning): Quote this to prevent word splitting.
+
+
+In install.sh line 151:
+    if multi_source_download "${tmp_ver}" "${raw_urls[@]}"; then
+                                           ^------------^ SC3054 (warning): In POSIX sh, array references are undefined.
+
+
+In install.sh line 156:
+    if [[ -n "$REMOTE_VERSION" && "$REMOTE_VERSION" != "$CURRENT_VERSION" ]]; then
+       ^-- SC3010 (warning): In POSIX sh, [[ ]] is undefined.
+
+
+In install.sh line 168:
+    local self_path="${BASH_SOURCE[0]:-$0}"
+    ^-------------^ SC3043 (warning): In POSIX sh, 'local' is undefined.
+                     ^-------------------^ SC3028 (warning): In POSIX sh, BASH_SOURCE is undefined.
+
+
+In install.sh line 170:
+    if [[ "$self_path" == /dev/fd/* ]] || [[ "$self_path" == /dev/stdin ]] || [[ ! -f "$self_path" ]]; then
+       ^-----------------------------^ SC3010 (warning): In POSIX sh, [[ ]] is undefined.
+                                          ^-- SC3010 (warning): In POSIX sh, [[ ]] is undefined.
+                                                                              ^---------------------^ SC3010 (warning): In POSIX sh, [[ ]] is undefined.
+
+
+In install.sh line 174:
+    if [[ ! -f "$self_path" ]]; then
+       ^---------------------^ SC3010 (warning): In POSIX sh, [[ ]] is undefined.
+
+
+In install.sh line 178:
+    local install_urls=($(build_download_urls "$GH_INSTALL_RAW_URL"))
+    ^----------------^ SC3043 (warning): In POSIX sh, 'local' is undefined.
+                       ^-- SC3030 (warning): In POSIX sh, arrays are undefined.
+                        ^-- SC2046 (warning): Quote this to prevent word splitting.
+                        ^-- SC2207 (warning): Prefer mapfile or read -a to split command output (or quote to avoid splitting).
+
+
+In install.sh line 180:
+    local tmp_install
+    ^---------------^ SC3043 (warning): In POSIX sh, 'local' is undefined.
+
+
+In install.sh line 182:
+    if ! multi_source_download "$tmp_install" "${install_urls[@]}"; then
+                                               ^----------------^ SC3054 (warning): In POSIX sh, array references are undefined.
+
+
+In install.sh line 196:
+    local old_md5 new_md5
+    ^-------------------^ SC3043 (warning): In POSIX sh, 'local' is undefined.
+
+
+In install.sh line 199:
+    if [[ "$old_md5" == "$new_md5" ]]; then
+       ^----------------------------^ SC3010 (warning): In POSIX sh, [[ ]] is undefined.
+
+
+In install.sh line 218:
+if [[ ! -d "$MODULES_DIR" ]]; then
+   ^-----------------------^ SC3010 (warning): In POSIX sh, [[ ]] is undefined.
+
+
+In install.sh line 238:
+                echo -n "[引导] 更新模块 ${module}.sh ... "
+                     ^-- SC3037 (warning): In POSIX sh, echo flags are undefined.
+
+
+In install.sh line 239:
+                local raw_urls=($(build_download_urls "${GH_RAW_URL}/${module}.sh"))
+                ^------------^ SC3043 (warning): In POSIX sh, 'local' is undefined.
+                               ^-- SC3030 (warning): In POSIX sh, arrays are undefined.
+                                ^-- SC2046 (warning): Quote this to prevent word splitting.
+                                ^-- SC2207 (warning): Prefer mapfile or read -a to split command output (or quote to avoid splitting).
+
+
+In install.sh line 240:
+                local tmp_mod
+                ^-----------^ SC3043 (warning): In POSIX sh, 'local' is undefined.
+
+
+In install.sh line 242:
+                if multi_source_download "${tmp_mod}" "${raw_urls[@]}" \
+                                                       ^------------^ SC3054 (warning): In POSIX sh, array references are undefined.
+
+
+In install.sh line 243:
+                   && [[ -s "${tmp_mod}" ]] \
+                      ^-------------------^ SC3010 (warning): In POSIX sh, [[ ]] is undefined.
+
+
+In install.sh line 259:
+source "${MODULES_DIR}/core.sh"     || { echo "错误: 无法加载 core.sh"; exit 1; }
+^-----------------------------^ SC3046 (warning): In POSIX sh, 'source' in place of '.' is undefined.
+       ^----------------------^ SC1091 (info): Not following: ./core.sh was not specified as input (see shellcheck -x).
+
+
+In install.sh line 260:
+source "${MODULES_DIR}/install.sh"  || { echo "错误: 无法加载 install.sh"; exit 1; }
+^-- SC3046 (warning): In POSIX sh, 'source' in place of '.' is undefined.
+^-- SC3051 (warning): In POSIX sh, 'source' in place of '.' is undefined.
+
+
+In install.sh line 261:
+source "${MODULES_DIR}/links.sh"    || { echo "错误: 无法加载 links.sh"; exit 1; }
+^-- SC3046 (warning): In POSIX sh, 'source' in place of '.' is undefined.
+       ^-----------------------^ SC1091 (info): Not following: ./links.sh was not specified as input (see shellcheck -x).
+
+
+In install.sh line 262:
+source "${MODULES_DIR}/dns.sh"      || { echo "错误: 无法加载 dns.sh"; exit 1; }
+^----------------------------^ SC3046 (warning): In POSIX sh, 'source' in place of '.' is undefined.
+       ^---------------------^ SC1091 (info): Not following: ./dns.sh was not specified as input (see shellcheck -x).
+
+
+In install.sh line 263:
+source "${MODULES_DIR}/relay.sh"    || { echo "错误: 无法加载 relay.sh"; exit 1; }
+^-- SC3046 (warning): In POSIX sh, 'source' in place of '.' is undefined.
+       ^-----------------------^ SC1091 (info): Not following: ./relay.sh was not specified as input (see shellcheck -x).
+
+
+In install.sh line 264:
+source "${MODULES_DIR}/protocols.sh"|| { echo "错误: 无法加载 protocols.sh"; exit 1; }
+^-- SC3046 (warning): In POSIX sh, 'source' in place of '.' is undefined.
+       ^---------------------------^ SC1091 (info): Not following: ./protocols.sh was not specified as input (see shellcheck -x).
+
+
+In install.sh line 265:
+source "${MODULES_DIR}/config.sh"   || { echo "错误: 无法加载 config.sh"; exit 1; }
+^-- SC3046 (warning): In POSIX sh, 'source' in place of '.' is undefined.
+       ^------------------------^ SC1091 (info): Not following: ./config.sh was not specified as input (see shellcheck -x).
+
+
+In install.sh line 266:
+source "${MODULES_DIR}/tune.sh"     || { echo "错误: 无法加载 tune.sh"; exit 1; }
+^-----------------------------^ SC3046 (warning): In POSIX sh, 'source' in place of '.' is undefined.
+       ^----------------------^ SC1091 (info): Not following: ./tune.sh was not specified as input (see shellcheck -x).
+
+
+In install.sh line 267:
+source "${MODULES_DIR}/menu.sh"     || { echo "错误: 无法加载 menu.sh"; exit 1; }
+^-----------------------------^ SC3046 (warning): In POSIX sh, 'source' in place of '.' is undefined.
+       ^----------------------^ SC1091 (info): Not following: ./menu.sh was not specified as input (see shellcheck -x).
+
+
+In modules/config.sh line 1:
+# ==================== sing-box 配置生成模块 ====================
+^-- SC2148 (error): Tips depend on target shell and yours is unknown. Add a shebang or a 'shell' directive.
+
+
+In modules/config.sh line 28:
+        read -p "请选择 [0-9]: " ip_choice
+        ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/config.sh line 36:
+                read -p "是否立即重新生成配置? (y/N): " regen
+                ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/config.sh line 51:
+                read -p "是否立即重新生成配置? (y/N): " regen
+                ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/config.sh line 62:
+                read -p "是否立即重新生成配置? (y/N): " regen
+                ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/config.sh line 72:
+                read -p "是否立即重新生成配置? (y/N): " regen
+                ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/config.sh line 88:
+                read -p "是否立即重新生成配置? (y/N): " regen
+                ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/config.sh line 104:
+                read -p "是否立即重新生成配置? (y/N): " regen
+                ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/config.sh line 115:
+                read -p "是否立即重新生成配置? (y/N): " regen
+                ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/config.sh line 121:
+                read -p "请输入 IPv4 地址: " new_ipv4
+                ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/config.sh line 130:
+                read -p "请输入 IPv6 地址: " new_ipv6
+                ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/config.sh line 162:
+    read -p "端口: " new_port
+    ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/config.sh line 173:
+    local new_tag=$(modify_port "$tag" "$tag_prefix" "$new_port")
+          ^-----^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/config.sh line 174:
+    INBOUND_TAGS[$array_idx]="$new_tag"
+                 ^--------^ SC2004 (style): $/${} is unnecessary on arithmetic variables.
+
+
+In modules/config.sh line 175:
+    INBOUND_PORTS[$array_idx]="$new_port"
+                  ^--------^ SC2004 (style): $/${} is unnecessary on arithmetic variables.
+
+
+In modules/config.sh line 186:
+    local current_hs_server=$(jq -r --arg tag "$tag" '(.inbounds[] | select(.tag == $tag)).tls.reality.handshake.server // ""' "${CONFIG_FILE}" 2>/dev/null)
+          ^---------------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/config.sh line 187:
+    local current_hs_port=$(jq -r --arg tag "$tag" '(.inbounds[] | select(.tag == $tag)).tls.reality.handshake.server_port // 443' "${CONFIG_FILE}" 2>/dev/null)
+          ^-------------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/config.sh line 200:
+        printf "  ${GREEN}[3]${NC} 重新生成 UUID\n"
+               ^-- SC2059 (info): Don't use variables in the printf format string. Use printf '..%s..' "$foo".
+
+
+In modules/config.sh line 201:
+        printf "  ${GREEN}[4]${NC} 重新生成 Short ID\n"
+               ^-- SC2059 (info): Don't use variables in the printf format string. Use printf '..%s..' "$foo".
+
+
+In modules/config.sh line 203:
+        printf "  ${GREEN}[0]${NC} 返回\n"
+               ^-----------------------^ SC2059 (info): Don't use variables in the printf format string. Use printf '..%s..' "$foo".
+
+
+In modules/config.sh line 204:
+        read -p "请选择: " mod_choice
+        ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/config.sh line 218:
+                read -p "SNI: " new_sni
+                ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/config.sh line 225:
+                        '(.inbounds[] | select(.tag == $tag)) |= (.tls.server_name = $sni | .tls.reality.handshake.server = $sni)'
+                        ^-- SC2016 (info): Expressions don't expand in single quotes, use double quotes for that.
+
+
+In modules/config.sh line 229:
+                        '(.inbounds[] | select(.tag == $tag)) |= (.tls.server_name = $sni)'
+                        ^-- SC2016 (info): Expressions don't expand in single quotes, use double quotes for that.
+
+
+In modules/config.sh line 231:
+                INBOUND_SNIS[$array_idx]="$new_sni"
+                             ^--------^ SC2004 (style): $/${} is unnecessary on arithmetic variables.
+
+
+In modules/config.sh line 254:
+                read -p "回落目标: " new_dest
+                ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/config.sh line 258:
+                        '(.inbounds[] | select(.tag == $tag)) |= (.tls.reality.handshake.server = $server | .tls.reality.handshake.server_port = $port)'
+                        ^-- SC2016 (info): Expressions don't expand in single quotes, use double quotes for that.
+
+
+In modules/config.sh line 275:
+                        '(.inbounds[] | select(.tag == $tag)) |= (.tls.reality.handshake.server = $server | .tls.reality.handshake.server_port = $port)'
+                        ^-- SC2016 (info): Expressions don't expand in single quotes, use double quotes for that.
+
+
+In modules/config.sh line 303:
+        printf "  ${GREEN}[3]${NC} 重新生成密码\n"
+               ^---------------------------^ SC2059 (info): Don't use variables in the printf format string. Use printf '..%s..' "$foo".
+
+
+In modules/config.sh line 304:
+        printf "  ${GREEN}[4]${NC} 重新生成混淆密码\n"
+               ^-----------------------------^ SC2059 (info): Don't use variables in the printf format string. Use printf '..%s..' "$foo".
+
+
+In modules/config.sh line 305:
+        printf "  ${GREEN}[0]${NC} 返回\n"
+               ^-----------------------^ SC2059 (info): Don't use variables in the printf format string. Use printf '..%s..' "$foo".
+
+
+In modules/config.sh line 306:
+        read -p "请选择: " mod_choice
+        ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/config.sh line 320:
+                read -p "SNI: " new_sni
+                ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/config.sh line 325:
+                    '(.inbounds[] | select(.tag == $tag)) |= (.tls.server_name = $sni | .tls.certificate_path = ($sni | $certdir + "/" + . + "/cert.pem") | .tls.key_path = ($sni | $certdir + "/" + . + "/private.key"))'
+                    ^-- SC2016 (info): Expressions don't expand in single quotes, use double quotes for that.
+
+
+In modules/config.sh line 327:
+                INBOUND_SNIS[$array_idx]="$new_sni"
+                             ^--------^ SC2004 (style): $/${} is unnecessary on arithmetic variables.
+
+
+In modules/config.sh line 356:
+    local current_user=$(jq -r --arg tag "$tag" '(.inbounds[] | select(.tag == $tag)).users[0].username // ""' "${CONFIG_FILE}")
+          ^----------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/config.sh line 363:
+        printf "  ${GREEN}[3]${NC} 重新生成密码\n"
+               ^---------------------------^ SC2059 (info): Don't use variables in the printf format string. Use printf '..%s..' "$foo".
+
+
+In modules/config.sh line 364:
+        printf "  ${GREEN}[0]${NC} 返回\n"
+               ^-----------------------^ SC2059 (info): Don't use variables in the printf format string. Use printf '..%s..' "$foo".
+
+
+In modules/config.sh line 365:
+        read -p "请选择: " mod_choice
+        ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/config.sh line 378:
+                read -p "用户名: " new_user
+                ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/config.sh line 383:
+                    '(.inbounds[] | select(.tag == $tag)) |= (.users[0].username = $user)'
+                    ^-- SC2016 (info): Expressions don't expand in single quotes, use double quotes for that.
+
+
+In modules/config.sh line 412:
+        printf "  ${GREEN}[3]${NC} 重新生成 ShadowTLS 密码\n"
+               ^-- SC2059 (info): Don't use variables in the printf format string. Use printf '..%s..' "$foo".
+
+
+In modules/config.sh line 413:
+        printf "  ${GREEN}[4]${NC} 重新生成 SS 密码\n"
+               ^-- SC2059 (info): Don't use variables in the printf format string. Use printf '..%s..' "$foo".
+
+
+In modules/config.sh line 414:
+        printf "  ${GREEN}[0]${NC} 返回\n"
+               ^-----------------------^ SC2059 (info): Don't use variables in the printf format string. Use printf '..%s..' "$foo".
+
+
+In modules/config.sh line 415:
+        read -p "请选择: " mod_choice
+        ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/config.sh line 421:
+                read -p "端口: " new_port
+                ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/config.sh line 437:
+                    '(.inbounds[] | select(.tag == $old_tag)) |= (.tag = $new_tag | .listen_port = $new_port | .detour = $new_ss_tag)'
+                    ^-- SC2016 (info): Expressions don't expand in single quotes, use double quotes for that.
+
+
+In modules/config.sh line 440:
+                    '(.inbounds[] | select(.tag == $old_ss_tag)) |= (.tag = $new_ss_tag)'
+                    ^-- SC2016 (info): Expressions don't expand in single quotes, use double quotes for that.
+
+
+In modules/config.sh line 444:
+                        '(.route.rules[] | select(.inbound[]? == $old_tag)) |= (.inbound = [.inbound[] | if . == $old_tag then $new_tag else . end])'
+                        ^-- SC2016 (info): Expressions don't expand in single quotes, use double quotes for that.
+
+
+In modules/config.sh line 446:
+                INBOUND_TAGS[$array_idx]="$new_stls_tag"
+                             ^--------^ SC2004 (style): $/${} is unnecessary on arithmetic variables.
+
+
+In modules/config.sh line 447:
+                INBOUND_PORTS[$array_idx]="$new_port"
+                              ^--------^ SC2004 (style): $/${} is unnecessary on arithmetic variables.
+
+
+In modules/config.sh line 456:
+                read -p "SNI: " new_sni
+                ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/config.sh line 461:
+                    '(.inbounds[] | select(.tag == $tag)) |= (.handshake.server = $sni)'
+                    ^-- SC2016 (info): Expressions don't expand in single quotes, use double quotes for that.
+
+
+In modules/config.sh line 462:
+                INBOUND_SNIS[$array_idx]="$new_sni"
+                             ^--------^ SC2004 (style): $/${} is unnecessary on arithmetic variables.
+
+
+In modules/config.sh line 497:
+        printf "  ${GREEN}[3]${NC} 重新生成 UUID\n"
+               ^-- SC2059 (info): Don't use variables in the printf format string. Use printf '..%s..' "$foo".
+
+
+In modules/config.sh line 498:
+        printf "  ${GREEN}[0]${NC} 返回\n"
+               ^-----------------------^ SC2059 (info): Don't use variables in the printf format string. Use printf '..%s..' "$foo".
+
+
+In modules/config.sh line 499:
+        read -p "请选择: " mod_choice
+        ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/config.sh line 513:
+                read -p "SNI: " new_sni
+                ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/config.sh line 518:
+                    '(.inbounds[] | select(.tag == $tag)) |= (.tls.server_name = $sni | .tls.certificate_path = ($sni | $certdir + "/" + . + "/cert.pem") | .tls.key_path = ($sni | $certdir + "/" + . + "/private.key"))'
+                    ^-- SC2016 (info): Expressions don't expand in single quotes, use double quotes for that.
+
+
+In modules/config.sh line 520:
+                INBOUND_SNIS[$array_idx]="$new_sni"
+                             ^--------^ SC2004 (style): $/${} is unnecessary on arithmetic variables.
+
+
+In modules/config.sh line 555:
+        printf "  ${GREEN}[3]${NC} 重新生成密码\n"
+               ^---------------------------^ SC2059 (info): Don't use variables in the printf format string. Use printf '..%s..' "$foo".
+
+
+In modules/config.sh line 556:
+        printf "  ${GREEN}[0]${NC} 返回\n"
+               ^-----------------------^ SC2059 (info): Don't use variables in the printf format string. Use printf '..%s..' "$foo".
+
+
+In modules/config.sh line 557:
+        read -p "请选择: " mod_choice
+        ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/config.sh line 578:
+                read -p "SNI: " new_sni
+                ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/config.sh line 584:
+                        '(.inbounds[] | select(.tag == $tag)) |= (.tls.server_name = $sni | .tls.reality.handshake.server = $sni)'
+                        ^-- SC2016 (info): Expressions don't expand in single quotes, use double quotes for that.
+
+
+In modules/config.sh line 587:
+                        '(.inbounds[] | select(.tag == $tag)) |= (.tls.server_name = $sni | .tls.certificate_path = ($sni | "/etc/sing-box/certs/\(.)" + "/cert.pem") | .tls.key_path = ($sni | "/etc/sing-box/certs/\(.)" + "/private.key"))'
+                        ^-- SC2016 (info): Expressions don't expand in single quotes, use double quotes for that.
+
+
+In modules/config.sh line 590:
+                INBOUND_SNIS[$array_idx]="$new_sni"
+                             ^--------^ SC2004 (style): $/${} is unnecessary on arithmetic variables.
+
+
+In modules/config.sh line 619:
+    unset INBOUND_TAGS[$idx]
+          ^----------------^ SC2184 (warning): Quote arguments to unset so they're not glob expanded.
+                       ^--^ SC2086 (info): Double quote to prevent globbing and word splitting.
+
+Did you mean: 
+    unset INBOUND_TAGS["$idx"]
+
+
+In modules/config.sh line 620:
+    unset INBOUND_PORTS[$idx]
+          ^-----------------^ SC2184 (warning): Quote arguments to unset so they're not glob expanded.
+                        ^--^ SC2086 (info): Double quote to prevent globbing and word splitting.
+
+Did you mean: 
+    unset INBOUND_PORTS["$idx"]
+
+
+In modules/config.sh line 621:
+    unset INBOUND_PROTOS[$idx]
+          ^------------------^ SC2184 (warning): Quote arguments to unset so they're not glob expanded.
+                         ^--^ SC2086 (info): Double quote to prevent globbing and word splitting.
+
+Did you mean: 
+    unset INBOUND_PROTOS["$idx"]
+
+
+In modules/config.sh line 622:
+    unset INBOUND_SNIS[$idx]
+          ^----------------^ SC2184 (warning): Quote arguments to unset so they're not glob expanded.
+                       ^--^ SC2086 (info): Double quote to prevent globbing and word splitting.
+
+Did you mean: 
+    unset INBOUND_SNIS["$idx"]
+
+
+In modules/config.sh line 623:
+    unset INBOUND_RELAY_TAGS[$idx]
+          ^----------------------^ SC2184 (warning): Quote arguments to unset so they're not glob expanded.
+                             ^--^ SC2086 (info): Double quote to prevent globbing and word splitting.
+
+Did you mean: 
+    unset INBOUND_RELAY_TAGS["$idx"]
+
+
+In modules/config.sh line 646:
+    read -p "请输入要删除的节点序号 (输入 0 取消): " node_idx
+    ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/config.sh line 686:
+                '.inbounds |= map(select(.tag != $tag and .tag != $ss_tag))' \
+                ^-- SC2016 (info): Expressions don't expand in single quotes, use double quotes for that.
+
+
+In modules/config.sh line 690:
+                '.inbounds |= map(select(.tag != $tag))' \
+                ^-- SC2016 (info): Expressions don't expand in single quotes, use double quotes for that.
+
+
+In modules/config.sh line 778:
+    cat > ${CONFIG_FILE} << EOFCONFIG
+          ^------------^ SC2086 (info): Double quote to prevent globbing and word splitting.
+
+Did you mean: 
+    cat > "${CONFIG_FILE}" << EOFCONFIG
+
+
+In modules/config.sh line 805:
+    read -p "是否启动空配置的 sing-box 服务? (y/N): " restart_service
+    ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/config.sh line 981:
+                INBOUND_RELAY_TAGS[$i]="direct"
+                                   ^-- SC2004 (style): $/${} is unnecessary on arithmetic variables.
+
+
+In modules/config.sh line 1073:
+        IFS='|' read -r match_type match_value dns_tag desc <<< "$route"
+                                                       ^--^ SC2034 (warning): desc appears unused. Verify use (or export if used externally).
+
+
+In modules/config.sh line 1090:
+            local domains_json=$(echo "$match_value" | awk -F',' '{for(i=1;i<=NF;i++){gsub(/^ +| +$/,"",$i);printf "\"%s\"", $i; if(i<NF) printf ","}}')
+                  ^----------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/config.sh line 1170:
+    cat > ${CONFIG_FILE} << EOFCONFIG
+          ^------------^ SC2086 (info): Double quote to prevent globbing and word splitting.
+
+Did you mean: 
+    cat > "${CONFIG_FILE}" << EOFCONFIG
+
+
+In modules/config.sh line 1253:
+    echo -e "  协议: ${GREEN}${PROTO}${NC}"
+                           ^------^ SC2153 (info): Possible misspelling: PROTO may not be assigned. Did you mean proto?
+
+
+In modules/config.sh line 1255:
+    echo -e "  端口: ${GREEN}${PORT}${NC}"
+                           ^-----^ SC2153 (info): Possible misspelling: PORT may not be assigned. Did you mean port?
+
+
+In modules/core.sh line 1:
+# ==================== sing-box 管理脚本模块 ====================
+^-- SC2148 (error): Tips depend on target shell and yours is unknown. Add a shebang or a 'shell' directive.
+
+
+In modules/core.sh line 3:
+MODULE_VERSION="1.18"
+^------------^ SC2034 (warning): MODULE_VERSION appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 16:
+CERT_DIR="/etc/sing-box/certs"
+^------^ SC2034 (warning): CERT_DIR appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 18:
+KEY_FILE="/etc/sing-box/keys.txt"
+^------^ SC2034 (warning): KEY_FILE appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 19:
+DNS_CONFIG_FILE="/etc/sing-box/dns.conf"
+^-------------^ SC2034 (warning): DNS_CONFIG_FILE appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 22:
+ALL_LINKS_FILE="${LINK_DIR}/all.txt"
+^------------^ SC2034 (warning): ALL_LINKS_FILE appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 23:
+REALITY_LINKS_FILE="${LINK_DIR}/reality.txt"
+^----------------^ SC2034 (warning): REALITY_LINKS_FILE appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 24:
+HYSTERIA2_LINKS_FILE="${LINK_DIR}/hysteria2.txt"
+^------------------^ SC2034 (warning): HYSTERIA2_LINKS_FILE appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 25:
+SOCKS5_LINKS_FILE="${LINK_DIR}/socks5.txt"
+^---------------^ SC2034 (warning): SOCKS5_LINKS_FILE appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 26:
+SHADOWTLS_LINKS_FILE="${LINK_DIR}/shadowtls.txt"
+^------------------^ SC2034 (warning): SHADOWTLS_LINKS_FILE appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 27:
+HTTPS_LINKS_FILE="${LINK_DIR}/https.txt"
+^--------------^ SC2034 (warning): HTTPS_LINKS_FILE appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 28:
+ANYTLS_LINKS_FILE="${LINK_DIR}/anytls.txt"
+^---------------^ SC2034 (warning): ANYTLS_LINKS_FILE appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 31:
+SCRIPT_PATH=$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")
+^---------^ SC2034 (warning): SCRIPT_PATH appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 34:
+INBOUNDS_JSON=""
+^-----------^ SC2034 (warning): INBOUNDS_JSON appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 35:
+ALL_LINKS_TEXT=""
+^------------^ SC2034 (warning): ALL_LINKS_TEXT appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 36:
+SERVER_IP=""
+^-------^ SC2034 (warning): SERVER_IP appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 37:
+REALITY_LINKS=""
+^-----------^ SC2034 (warning): REALITY_LINKS appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 38:
+HYSTERIA2_LINKS=""
+^-------------^ SC2034 (warning): HYSTERIA2_LINKS appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 39:
+SOCKS5_LINKS=""
+^----------^ SC2034 (warning): SOCKS5_LINKS appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 40:
+SHADOWTLS_LINKS=""
+^-------------^ SC2034 (warning): SHADOWTLS_LINKS appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 41:
+HTTPS_LINKS=""
+^---------^ SC2034 (warning): HTTPS_LINKS appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 42:
+ANYTLS_LINKS=""
+^----------^ SC2034 (warning): ANYTLS_LINKS appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 45:
+SERVER_IPV6=""
+^---------^ SC2034 (warning): SERVER_IPV6 appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 46:
+INBOUND_IP_MODE="dual"   # ipv4, ipv6 或 dual，控制入站监听地址（默认双栈）
+^-------------^ SC2034 (warning): INBOUND_IP_MODE appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 47:
+OUTBOUND_IP_MODE="dual"  # ipv4, ipv6, ipv6_only 或 dual，控制出站连接（默认双栈）
+^--------------^ SC2034 (warning): OUTBOUND_IP_MODE appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 48:
+IP_CONFIG_FILE="/etc/sing-box/ip_config.conf"
+^------------^ SC2034 (warning): IP_CONFIG_FILE appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 51:
+RELAY_TAGS=()        # 中转标签数组
+^--------^ SC2034 (warning): RELAY_TAGS appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 52:
+RELAY_JSONS=()       # 中转JSON配置数组
+^---------^ SC2034 (warning): RELAY_JSONS appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 53:
+RELAY_DESCS=()       # 中转描述数组
+^---------^ SC2034 (warning): RELAY_DESCS appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 54:
+RELAY_FILE="/etc/sing-box/relays.conf"
+^--------^ SC2034 (warning): RELAY_FILE appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 57:
+DOMAIN_ROUTES=()     # 分流规则数组: 入站标签|匹配类型|匹配值|中转标签|描述
+^-----------^ SC2034 (warning): DOMAIN_ROUTES appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 58:
+DOMAIN_ROUTE_FILE="/etc/sing-box/domain_routes.conf"
+^---------------^ SC2034 (warning): DOMAIN_ROUTE_FILE appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 61:
+DNS_SERVERS=()       # 自定义 DNS 服务器数组: TAG|TYPE|SERVER|DESCRIPTION
+^---------^ SC2034 (warning): DNS_SERVERS appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 62:
+DNS_ROUTES=()        # DNS 分流规则数组: MATCH_TYPE|MATCH_VALUE|DNS_TAG|DESCRIPTION
+^--------^ SC2034 (warning): DNS_ROUTES appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 63:
+DNS_SERVERS_FILE="/etc/sing-box/dns_servers.conf"
+^--------------^ SC2034 (warning): DNS_SERVERS_FILE appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 64:
+DNS_ROUTES_FILE="/etc/sing-box/dns_routes.conf"
+^-------------^ SC2034 (warning): DNS_ROUTES_FILE appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 67:
+INBOUND_TAGS=()
+^----------^ SC2034 (warning): INBOUND_TAGS appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 68:
+INBOUND_PORTS=()
+^-----------^ SC2034 (warning): INBOUND_PORTS appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 69:
+INBOUND_PROTOS=()
+^------------^ SC2034 (warning): INBOUND_PROTOS appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 70:
+INBOUND_RELAY_TAGS=()  # 存储每个节点使用的中转标签，"direct" 表示直连
+^----------------^ SC2034 (warning): INBOUND_RELAY_TAGS appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 71:
+INBOUND_SNIS=()
+^----------^ SC2034 (warning): INBOUND_SNIS appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 74:
+REALITY_PRIVATE=""
+^-------------^ SC2034 (warning): REALITY_PRIVATE appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 75:
+REALITY_PUBLIC=""
+^------------^ SC2034 (warning): REALITY_PUBLIC appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 76:
+SHORT_ID=""
+^------^ SC2034 (warning): SHORT_ID appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 79:
+DEFAULT_SNI="www.notion.so"
+^---------^ SC2034 (warning): DEFAULT_SNI appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 80:
+DEFAULT_SNI1="www.notion.so,www.atlassian.com"
+^----------^ SC2034 (warning): DEFAULT_SNI1 appears unused. Verify use (or export if used externally).
+
+
+In modules/core.sh line 157:
+    read -p "$msg" _
+    ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/core.sh line 164:
+    read -p "$prompt" ans
+    ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/core.sh line 268:
+        '(.inbounds[] | select(.tag == $old_tag)) |= (.tag = $new_tag | .listen_port = $new_port)'
+        ^-- SC2016 (info): Expressions don't expand in single quotes, use double quotes for that.
+
+
+In modules/core.sh line 272:
+            '(.route.rules[] | select(.inbound[]? == $old_tag)) |= (.inbound = [.inbound[] | if . == $old_tag then $new_tag else . end])'
+            ^-- SC2016 (info): Expressions don't expand in single quotes, use double quotes for that.
+
+
+In modules/core.sh line 291:
+            jq_path='(.inbounds[] | select(.tag == $tag)) |= (.users[0].uuid = $uuid)'
+                    ^-- SC2016 (info): Expressions don't expand in single quotes, use double quotes for that.
+
+
+In modules/core.sh line 298:
+            jq_path='(.inbounds[] | select(.tag == $tag)) |= (.users[0].password = $password)'
+                    ^-- SC2016 (info): Expressions don't expand in single quotes, use double quotes for that.
+
+
+In modules/core.sh line 305:
+            jq_path='(.inbounds[] | select(.tag == $tag)) |= (.tls.reality.short_id = [$sid])'
+                    ^-- SC2016 (info): Expressions don't expand in single quotes, use double quotes for that.
+
+
+In modules/core.sh line 312:
+            jq_path='(.inbounds[] | select(.tag == $tag)) |= (.obfs.password = $password)'
+                    ^-- SC2016 (info): Expressions don't expand in single quotes, use double quotes for that.
+
+
+In modules/core.sh line 319:
+            jq_path='(.inbounds[] | select(.tag == $tag)) |= (.password = $password)'
+                    ^-- SC2016 (info): Expressions don't expand in single quotes, use double quotes for that.
+
+
+In modules/core.sh line 360:
+        source /etc/os-release
+               ^-------------^ SC1091 (info): Not following: /etc/os-release was not specified as input (see shellcheck -x).
+
+
+In modules/core.sh line 404:
+    local version=$(${INSTALL_DIR}/sing-box version 2>/dev/null | awk '/sing-box version/{print $3}' || echo "0.0.0")
+          ^-----^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/core.sh line 410:
+    IFS='.' read -r major minor patch <<< "$version"
+                                ^---^ SC2034 (warning): patch appears unused. Verify use (or export if used externally).
+
+
+In modules/dns.sh line 1:
+# ==================== sing-box DNS配置模块 ====================
+^-- SC2148 (error): Tips depend on target shell and yours is unknown. Add a shebang or a 'shell' directive.
+
+
+In modules/dns.sh line 73:
+        read -p "请选择 [0-6]: " dns_choice
+        ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/dns.sh line 94:
+                read -p "请输入 DNS 服务器地址 (域名，如 dns.google): " custom_dns
+                ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/dns.sh line 111:
+                read -p "请选择: " preset_choice
+                ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/dns.sh line 134:
+            read -p "是否立即重新生成配置? (y/N): " regen
+            ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/dns.sh line 203:
+    read -p "请选择: " dns_preset
+    ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/dns.sh line 213:
+            read -p "DNS 标签 (如 unlock-jp，留空自动生成): " tag
+            ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/dns.sh line 217:
+            read -p "DNS 类型 (udp/doh/dot) [udp]: " type
+            ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/dns.sh line 219:
+            read -p "DNS 服务器地址: " server
+            ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/dns.sh line 224:
+            read -p "描述 (如 JP 流媒体解锁): " desc
+            ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/dns.sh line 234:
+        local existing_tag=$(echo "$entry" | cut -d'|' -f1)
+              ^----------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/dns.sh line 262:
+    read -p "请选择要删除的序号 (输入 -1 取消): " del_idx
+    ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/dns.sh line 276:
+                local route_tag=$(echo "$route" | cut -d'|' -f3)
+                      ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/dns.sh line 291:
+        local del_tag=$(echo "${DNS_SERVERS[$d]}" | cut -d'|' -f1)
+              ^-----^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/dns.sh line 292:
+        local del_desc=$(echo "${DNS_SERVERS[$d]}" | cut -d'|' -f4)
+              ^------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/dns.sh line 297:
+            local route_tag=$(echo "$route" | cut -d'|' -f3)
+                  ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/dns.sh line 308:
+                local route_tag=$(echo "$route" | cut -d'|' -f3)
+                      ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/dns.sh line 342:
+    read -p "请选择 [1-3]: " match_choice
+    ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/dns.sh line 354:
+    read -p "域名: " match_value
+    ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/dns.sh line 369:
+    read -p "请选择: " dns_idx
+    ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/dns.sh line 376:
+    local dns_tag=$(echo "${DNS_SERVERS[$((dns_idx-1))]}" | cut -d'|' -f1)
+          ^-----^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/dns.sh line 377:
+    local dns_desc=$(echo "${DNS_SERVERS[$((dns_idx-1))]}" | cut -d'|' -f4)
+          ^------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/dns.sh line 380:
+    read -p "描述 (留空自动生成): " route_desc
+    ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/dns.sh line 414:
+    read -p "请选择: " node_idx
+    ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/dns.sh line 434:
+    read -p "请选择: " dns_idx
+    ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/dns.sh line 441:
+    local dns_tag=$(echo "${DNS_SERVERS[$((dns_idx-1))]}" | cut -d'|' -f1)
+          ^-----^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/dns.sh line 442:
+    local dns_desc=$(echo "${DNS_SERVERS[$((dns_idx-1))]}" | cut -d'|' -f4)
+          ^------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/dns.sh line 446:
+    read -p "描述 [${route_desc}]: " custom_desc
+    ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/dns.sh line 478:
+    read -p "请选择要删除的序号 (输入 -1 取消): " del_idx
+    ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/dns.sh line 549:
+        read -p "请选择 [0-5]: " route_choice
+        ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/dns.sh line 563:
+            read -p "是否立即重新生成配置? (y/N): " regen
+            ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/install.sh line 1:
+# ==================== sing-box 安装模块 ====================
+^-- SC2148 (error): Tips depend on target shell and yours is unknown. Add a shebang or a 'shell' directive.
+
+
+In modules/install.sh line 47:
+        if ${INSTALL_DIR}/sing-box version >/dev/null 2>&1; then
+           ^------------^ SC2086 (info): Double quote to prevent globbing and word splitting.
+
+Did you mean: 
+        if "${INSTALL_DIR}"/sing-box version >/dev/null 2>&1; then
+
+
+In modules/install.sh line 48:
+            local version=$(${INSTALL_DIR}/sing-box version 2>&1 | awk '/sing-box version/{print $3}' || echo "unknown")
+                  ^-----^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+                            ^------------^ SC2086 (info): Double quote to prevent globbing and word splitting.
+
+Did you mean: 
+            local version=$("${INSTALL_DIR}"/sing-box version 2>&1 | awk '/sing-box version/{print $3}' || echo "unknown")
+
+
+In modules/install.sh line 79:
+        rm -rf /tmp/sb.tar.gz /tmp/sing-box-${LATEST}-linux-${ARCH}
+                                            ^-------^ SC2086 (info): Double quote to prevent globbing and word splitting.
+                                                            ^-----^ SC2086 (info): Double quote to prevent globbing and word splitting.
+
+Did you mean: 
+        rm -rf /tmp/sb.tar.gz /tmp/sing-box-"${LATEST}"-linux-"${ARCH}"
+
+
+In modules/install.sh line 161:
+            if ${INSTALL_DIR}/sing-box version >/dev/null 2>&1; then
+               ^------------^ SC2086 (info): Double quote to prevent globbing and word splitting.
+
+Did you mean: 
+            if "${INSTALL_DIR}"/sing-box version >/dev/null 2>&1; then
+
+
+In modules/install.sh line 163:
+                version=$(${INSTALL_DIR}/sing-box version 2>&1 | awk '/sing-box version/{print $3}' || echo "unknown")
+                          ^------------^ SC2086 (info): Double quote to prevent globbing and word splitting.
+
+Did you mean: 
+                version=$("${INSTALL_DIR}"/sing-box version 2>&1 | awk '/sing-box version/{print $3}' || echo "unknown")
+
+
+In modules/install.sh line 170:
+                echo -e "  文件大小: $(ls -l ${INSTALL_DIR}/sing-box 2>/dev/null | awk '{print $5}') bytes"
+                                   ^-- SC2012 (info): Use find instead of ls to better handle non-alphanumeric filenames.
+                                         ^------------^ SC2086 (info): Double quote to prevent globbing and word splitting.
+
+Did you mean: 
+                echo -e "  文件大小: $(ls -l "${INSTALL_DIR}"/sing-box 2>/dev/null | awk '{print $5}') bytes"
+
+
+In modules/install.sh line 172:
+                    echo -e "  文件类型: $(file -b ${INSTALL_DIR}/sing-box 2>/dev/null)"
+                                               ^------------^ SC2086 (info): Double quote to prevent globbing and word splitting.
+
+Did you mean: 
+                    echo -e "  文件类型: $(file -b "${INSTALL_DIR}"/sing-box 2>/dev/null)"
+
+
+In modules/install.sh line 176:
+                exec_err=$(${INSTALL_DIR}/sing-box version 2>&1) || true
+                           ^------------^ SC2086 (info): Double quote to prevent globbing and word splitting.
+
+Did you mean: 
+                exec_err=$("${INSTALL_DIR}"/sing-box version 2>&1) || true
+
+
+In modules/install.sh line 185:
+                        if ${INSTALL_DIR}/sing-box version >/dev/null 2>&1; then
+                           ^------------^ SC2086 (info): Double quote to prevent globbing and word splitting.
+
+Did you mean: 
+                        if "${INSTALL_DIR}"/sing-box version >/dev/null 2>&1; then
+
+
+In modules/install.sh line 186:
+                            local version=$(${INSTALL_DIR}/sing-box version 2>&1 | awk '/sing-box version/{print $3}' || echo "unknown")
+                                  ^-----^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+                                            ^------------^ SC2086 (info): Double quote to prevent globbing and word splitting.
+
+Did you mean: 
+                            local version=$("${INSTALL_DIR}"/sing-box version 2>&1 | awk '/sing-box version/{print $3}' || echo "unknown")
+
+
+In modules/install.sh line 313:
+    KEYS=$(${INSTALL_DIR}/sing-box generate reality-keypair 2>/dev/null)
+           ^------------^ SC2086 (info): Double quote to prevent globbing and word splitting.
+
+Did you mean: 
+    KEYS=$("${INSTALL_DIR}"/sing-box generate reality-keypair 2>/dev/null)
+
+
+In modules/links.sh line 1:
+# ==================== sing-box 链接管理模块 ====================
+^-- SC2148 (error): Tips depend on target shell and yours is unknown. Add a shebang or a 'shell' directive.
+
+
+In modules/links.sh line 37:
+    local inbounds_count=$(jq '.inbounds | length' "${CONFIG_FILE}" 2>/dev/null || echo "0")
+          ^------------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 46:
+        local inbound=$(jq -c ".inbounds[${i}]" "${CONFIG_FILE}" 2>/dev/null)
+              ^-----^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 60:
+        local tag=$(echo "$inbound" | jq -r '.tag' 2>/dev/null || echo "unknown")
+              ^-^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 61:
+        local port=$(echo "$inbound" | jq -r '.listen_port' 2>/dev/null || echo "0")
+              ^--^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 62:
+        local type=$(echo "$inbound" | jq -r '.type' 2>/dev/null || echo "unknown")
+              ^--^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 77:
+            local transport=$(echo "$inbound" | jq -r '.transport.type // "ws"' 2>/dev/null)
+                  ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 81:
+            local transport=$(echo "$inbound" | jq -r '.transport.type // "ws"' 2>/dev/null)
+                  ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 85:
+            local transport=$(echo "$inbound" | jq -r '.transport.type // "ws"' 2>/dev/null)
+                  ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 116:
+    INBOUNDS_JSON="$inbound_list"
+    ^-----------^ SC2034 (warning): INBOUNDS_JSON appears unused. Verify use (or export if used externally).
+
+
+In modules/links.sh line 120:
+    local route_rules=$(jq -c '.route.rules[]? // empty' "${CONFIG_FILE}" 2>/dev/null)
+          ^---------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 126:
+            local has_inbound=$(echo "$rule" | jq -e '.inbound // empty' 2>/dev/null)
+                  ^---------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 131:
+            local has_domain=$(echo "$rule" | jq -e '.domain // .domain_suffix // .domain_keyword // .domain_regex // empty' 2>/dev/null)
+                  ^--------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 132:
+            local has_ip=$(echo "$rule" | jq -e '.ip_cidr // .ip // empty' 2>/dev/null)
+                  ^----^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 137:
+            local inbound_array=$(echo "$rule" | jq -r '.inbound[]? // empty' 2>/dev/null)
+                  ^-----------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 138:
+            local outbound=$(echo "$rule" | jq -r '.outbound // ""' 2>/dev/null)
+                  ^------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 150:
+                INBOUND_RELAY_TAGS[$i]="${default_relay[$tag]}"
+                                   ^-- SC2004 (style): $/${} is unnecessary on arithmetic variables.
+
+
+In modules/links.sh line 163:
+    local uuid=$(echo "$inbound" | jq -r '.users[0].uuid // ""' 2>/dev/null)
+          ^--^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 164:
+    local sni=$(echo "$inbound" | jq -r '.tls.server_name // ""' 2>/dev/null)
+          ^-^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 165:
+    local pbk=$(echo "$inbound" | jq -r '.tls.reality.public_key // ""' 2>/dev/null)
+          ^-^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 166:
+    local sid=$(echo "$inbound" | jq -r '.tls.reality.short_id[0] // ""' 2>/dev/null)
+          ^-^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 173:
+        local link_ipv4=$(generate_proto_link "reality" "${SERVER_IP}" "${port}" "uuid=${uuid}" "sni=${sni}" "pbk=${pbk}" "sid=${sid}")
+              ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 177:
+            local link_ipv6=$(generate_proto_link "reality" "[${SERVER_IPV6}]" "${port}" "uuid=${uuid}" "sni=${sni}" "pbk=${pbk}" "sid=${sid}")
+                  ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 186:
+    local uuid=$(echo "$inbound" | jq -r '.users[0].uuid // ""' 2>/dev/null)
+          ^--^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 187:
+    local sni=$(echo "$inbound" | jq -r '.tls.server_name // ""' 2>/dev/null)
+          ^-^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 192:
+        local link_ipv4=$(generate_proto_link "https" "${SERVER_IP}" "${port}" "uuid=${uuid}" "sni=${sni}")
+              ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 196:
+            local link_ipv6=$(generate_proto_link "https" "[${SERVER_IPV6}]" "${port}" "uuid=${uuid}" "sni=${sni}")
+                  ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 205:
+    local password=$(echo "$inbound" | jq -r '.users[0].password // ""' 2>/dev/null)
+          ^------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 206:
+    local sni=$(echo "$inbound" | jq -r '.tls.server_name // ""' 2>/dev/null)
+          ^-^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 207:
+    local obfs_type=$(echo "$inbound" | jq -r '.obfs.type // ""' 2>/dev/null)
+          ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 208:
+    local obfs_password=$(echo "$inbound" | jq -r '.obfs.password // ""' 2>/dev/null)
+          ^-----------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 209:
+    local port_range_num=$(echo "$inbound" | jq -r '.port_range // 0' 2>/dev/null)
+          ^------------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 210:
+    local listen_port=$(echo "$inbound" | jq -r '.listen_port' 2>/dev/null)
+          ^---------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 221:
+        local link_ipv4=$(generate_proto_link "hysteria2" "${SERVER_IP}" "${port_part}" "password=${password}" "sni=${sni}" "obfs_type=${obfs_type}" "obfs_password=${obfs_password}")
+              ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 225:
+            local link_ipv6=$(generate_proto_link "hysteria2" "[${SERVER_IPV6}]" "${port_part}" "password=${password}" "sni=${sni}" "obfs_type=${obfs_type}" "obfs_password=${obfs_password}")
+                  ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 234:
+    local username=$(echo "$inbound" | jq -r '.users[0].username // ""' 2>/dev/null)
+          ^------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 235:
+    local password=$(echo "$inbound" | jq -r '.users[0].password // ""' 2>/dev/null)
+          ^------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 237:
+    local link_ipv4=$(generate_proto_link "socks5" "${SERVER_IP}" "${port}" "username=${username}" "password=${password}")
+          ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 241:
+        local link_ipv6=$(generate_proto_link "socks5" "[${SERVER_IPV6}]" "${port}" "username=${username}" "password=${password}")
+              ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 249:
+    local shadowtls_password=$(echo "$inbound" | jq -r '.users[0].password // ""' 2>/dev/null)
+          ^----------------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 250:
+    local sni=$(echo "$inbound" | jq -r '.handshake.server // ""' 2>/dev/null)
+          ^-^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 255:
+        local ss_inbound=$(jq -c ".inbounds[] | select(.tag == \"shadowsocks-in-${port}\")" "${CONFIG_FILE}" 2>/dev/null)
+              ^--------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 256:
+        local ss_password=$(echo "$ss_inbound" | jq -r '.password // ""' 2>/dev/null)
+              ^---------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 257:
+        local ss_method=$(echo "$ss_inbound" | jq -r '.method // "2022-blake3-aes-128-gcm"' 2>/dev/null)
+              ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 260:
+            local link_ipv4=$(generate_proto_link "shadowtls" "${SERVER_IP}" "${port}" "sni=${sni}" "shadowtls_password=${shadowtls_password}" "ss_method=${ss_method}" "ss_password=${ss_password}")
+                  ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 267:
+                local link_ipv6=$(generate_proto_link "shadowtls" "[${SERVER_IPV6}]" "${port}" "sni=${sni}" "shadowtls_password=${shadowtls_password}" "ss_method=${ss_method}" "ss_password=${ss_password}")
+                      ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 280:
+    local password=$(echo "$inbound" | jq -r '.users[0].password // ""' 2>/dev/null)
+          ^------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 281:
+    local sni=$(echo "$inbound" | jq -r '.tls.server_name // ""' 2>/dev/null)
+          ^-^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 282:
+    local reality_enabled=$(echo "$inbound" | jq -r '.tls.reality.enabled // false' 2>/dev/null)
+          ^-------------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 311:
+            local link_ipv4=$(generate_proto_link "anytls" "${SERVER_IP}" "${port}" "password=${password}" "sni=${sni}" "insecure=true")
+                  ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 321:
+                local link_ipv6=$(generate_proto_link "anytls" "[${SERVER_IPV6}]" "${port}" "password=${password}" "sni=${sni}" "insecure=true")
+                      ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 337:
+    local uuid=$(echo "$inbound" | jq -r '.users[0].uuid // ""' 2>/dev/null)
+          ^--^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 338:
+    local sni=$(echo "$inbound" | jq -r '.tls.server_name // ""' 2>/dev/null)
+          ^-^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 339:
+    local transport=$(echo "$inbound" | jq -r '.transport.type // "ws"' 2>/dev/null)
+          ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 340:
+    local ws_path=$(echo "$inbound" | jq -r '.transport.path // "/ws"' 2>/dev/null)
+          ^-----^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 341:
+    local ws_host=$(echo "$inbound" | jq -r '.transport.headers.Host // ""' 2>/dev/null)
+          ^-----^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 342:
+    local grpc_service=$(echo "$inbound" | jq -r '.transport.service_name // "grpc"' 2>/dev/null)
+          ^----------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 348:
+        local link_ipv4=$(generate_proto_link "vless-ws" "${SERVER_IP}" "${port}" \
+              ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 354:
+            local link_ipv6=$(generate_proto_link "vless-ws" "[${SERVER_IPV6}]" "${port}" \
+                  ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 365:
+    local uuid=$(echo "$inbound" | jq -r '.users[0].uuid // ""' 2>/dev/null)
+          ^--^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 366:
+    local sni=$(echo "$inbound" | jq -r '.tls.server_name // ""' 2>/dev/null)
+          ^-^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 367:
+    local transport=$(echo "$inbound" | jq -r '.transport.type // "ws"' 2>/dev/null)
+          ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 368:
+    local ws_path=$(echo "$inbound" | jq -r '.transport.path // "/ws"' 2>/dev/null)
+          ^-----^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 369:
+    local ws_host=$(echo "$inbound" | jq -r '.transport.headers.Host // ""' 2>/dev/null)
+          ^-----^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 370:
+    local grpc_service=$(echo "$inbound" | jq -r '.transport.service_name // "grpc"' 2>/dev/null)
+          ^----------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 376:
+        local link_ipv4=$(generate_proto_link "vmess-ws" "${SERVER_IP}" "${port}" \
+              ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 382:
+            local link_ipv6=$(generate_proto_link "vmess-ws" "[${SERVER_IPV6}]" "${port}" \
+                  ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 393:
+    local password=$(echo "$inbound" | jq -r '.users[0].password // ""' 2>/dev/null)
+          ^------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 394:
+    local sni=$(echo "$inbound" | jq -r '.tls.server_name // ""' 2>/dev/null)
+          ^-^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 395:
+    local transport=$(echo "$inbound" | jq -r '.transport.type // "ws"' 2>/dev/null)
+          ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 396:
+    local ws_path=$(echo "$inbound" | jq -r '.transport.path // "/ws"' 2>/dev/null)
+          ^-----^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 397:
+    local ws_host=$(echo "$inbound" | jq -r '.transport.headers.Host // ""' 2>/dev/null)
+          ^-----^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 398:
+    local grpc_service=$(echo "$inbound" | jq -r '.transport.service_name // "grpc"' 2>/dev/null)
+          ^----------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 404:
+        local link_ipv4=$(generate_proto_link "trojan-ws" "${SERVER_IP}" "${port}" \
+              ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 410:
+            local link_ipv6=$(generate_proto_link "trojan-ws" "[${SERVER_IPV6}]" "${port}" \
+                  ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 430:
+    VLESS_CDN_LINKS=""
+    ^-------------^ SC2034 (warning): VLESS_CDN_LINKS appears unused. Verify use (or export if used externally).
+
+
+In modules/links.sh line 431:
+    VMESS_CDN_LINKS=""
+    ^-------------^ SC2034 (warning): VMESS_CDN_LINKS appears unused. Verify use (or export if used externally).
+
+
+In modules/links.sh line 432:
+    TROJAN_CDN_LINKS=""
+    ^--------------^ SC2034 (warning): TROJAN_CDN_LINKS appears unused. Verify use (or export if used externally).
+
+
+In modules/links.sh line 441:
+                REALITY_PRIVATE) REALITY_PRIVATE="$value" ;;
+                                 ^-------------^ SC2034 (warning): REALITY_PRIVATE appears unused. Verify use (or export if used externally).
+
+
+In modules/links.sh line 458:
+    local inbounds_count=$(jq '.inbounds | length' "${CONFIG_FILE}" 2>/dev/null || echo "0")
+          ^------------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 470:
+        local inbound=$(jq -c ".inbounds[${i}]" "${CONFIG_FILE}" 2>/dev/null)
+              ^-----^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 473:
+        local type=$(echo "$inbound" | jq -r '.type' 2>/dev/null)
+              ^--^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 474:
+        local port=$(echo "$inbound" | jq -r '.listen_port' 2>/dev/null)
+              ^--^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 479:
+                local tls_enabled=$(echo "$inbound" | jq -r '.tls.enabled // false' 2>/dev/null)
+                      ^---------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 481:
+                    local reality_enabled=$(echo "$inbound" | jq -r '.tls.reality.enabled // false' 2>/dev/null)
+                          ^-------------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 486:
+                        local has_transport=$(echo "$inbound" | jq -r '.transport.type // ""' 2>/dev/null)
+                              ^-----------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 541:
+            padding=*) padding="${1#padding=}" ;;
+                       ^-----^ SC2034 (warning): padding appears unused. Verify use (or export if used externally).
+
+
+In modules/links.sh line 542:
+            security=*) security="${1#security=}" ;;
+                        ^------^ SC2034 (warning): security appears unused. Verify use (or export if used externally).
+
+
+In modules/links.sh line 641:
+                local ss_userinfo=$(echo -n "${ss_method}:${ss_password}" | base64 -w0 | sed 's/+/-/g; s/\//_/g; s/=//g')
+                      ^---------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 643:
+                local plugin_base64=$(echo -n "$plugin_json" | base64 -w0 | sed 's/+/-/g; s/\//_/g; s/=//g')
+                      ^-----------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/links.sh line 646:
+            proto_label="ShadowTLS v3"
+            ^---------^ SC2034 (warning): proto_label appears unused. Verify use (or export if used externally).
+
+
+In modules/links.sh line 660:
+    local extra_info="$3"
+          ^--------^ SC2034 (warning): extra_info appears unused. Verify use (or export if used externally).
+
+
+In modules/menu.sh line 1:
+# ==================== sing-box 菜单系统模块 ====================
+^-- SC2148 (error): Tips depend on target shell and yours is unknown. Add a shebang or a 'shell' directive.
+
+
+In modules/menu.sh line 25:
+    read -p "选择 [1-9]: " choice
+    ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/menu.sh line 110:
+                    local proto=$(echo "${RELAY_DESCS[$i]}" | cut -d' ' -f1)
+                          ^---^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/menu.sh line 138:
+            local proto=$(echo "$desc" | cut -d' ' -f1)
+                  ^---^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/menu.sh line 247:
+    read -p "请选择要修改的节点序号: " node_choice
+    ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/menu.sh line 311:
+        read -p "请选择 [0-11]: " cv_choice
+        ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/menu.sh line 405:
+    read -p "确认完全卸载？(y/N): " CONFIRM_DELETE
+    ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/menu.sh line 436:
+        local sb_bin=$(command -v sing-box)
+              ^----^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/menu.sh line 567:
+                            local relay_type=$(echo "$relay_json" | grep -o '"type": "[^"]*"' | cut -d'"' -f4 | tr '[:lower:]' '[:upper:]')
+                                  ^--------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/menu.sh line 569:
+                            local relay_server=$(echo "$relay_json" | grep -o '"server": "[^"]*"' | cut -d'"' -f4)
+                                  ^----------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/menu.sh line 571:
+                            local relay_port=$(echo "$relay_json" | grep -o '"server_port": [0-9]*' | grep -o '[0-9]*')
+                                  ^--------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/menu.sh line 629:
+        read -p "请选择 [0-3]: " dr_choice
+        ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/menu.sh line 683:
+    read -p "请选择 [1-$((idx-1))]: " inbound_idx
+    ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/menu.sh line 699:
+    read -p "请选择 [1-4]: " type_idx
+    ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/menu.sh line 717:
+    read -p "请输入: " match_input
+    ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/menu.sh line 742:
+    read -p "请选择 [1-$((idx-1))]: " relay_idx
+    ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/menu.sh line 752:
+    read -p "请输入描述 (可选): " desc
+    ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/menu.sh line 766:
+        local base_idx=${#DOMAIN_ROUTES[@]}
+              ^------^ SC2034 (warning): base_idx appears unused. Verify use (or export if used externally).
+
+
+In modules/menu.sh line 862:
+                    local relay_type=$(echo "$relay_json" | grep -o '"type": "[^"]*"' | cut -d'"' -f4 | tr '[:lower:]' '[:upper:]')
+                          ^--------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/menu.sh line 864:
+                    local relay_server=$(echo "$relay_json" | grep -o '"server": "[^"]*"' | cut -d'"' -f4)
+                          ^----------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/menu.sh line 866:
+                    local relay_port=$(echo "$relay_json" | grep -o '"server_port": [0-9]*' | grep -o '[0-9]*')
+                          ^--------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/menu.sh line 886:
+            IFS='|' read -r orig_idx tag mtype mval rtag rdesc <<< "$item"
+                                                         ^---^ SC2034 (warning): rdesc appears unused. Verify use (or export if used externally).
+
+
+In modules/menu.sh line 916:
+    read -p "请选择要删除的规则编号 [1-$max_idx]: " delete_idx
+    ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/menu.sh line 925:
+    IFS='|' read -r del_inbound del_type del_value del_relay del_desc <<< "$to_delete"
+                                                   ^-------^ SC2034 (warning): del_relay appears unused. Verify use (or export if used externally).
+                                                             ^------^ SC2034 (warning): del_desc appears unused. Verify use (or export if used externally).
+
+
+In modules/menu.sh line 957:
+            local current_mtime=$(stat -c %Y "${CONFIG_FILE}" 2>/dev/null || stat -f %m "${CONFIG_FILE}" 2>/dev/null || echo 0)
+                  ^-----------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/menu.sh line 967:
+        read -p "请选择 [0-8]: " m_choice
+        ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/protocols.sh line 1:
+# ==================== sing-box 协议配置模块 ====================
+^-- SC2148 (error): Tips depend on target shell and yours is unknown. Add a shebang or a 'shell' directive.
+
+
+In modules/protocols.sh line 10:
+        read -p "SNI域名 [${DEFAULT_SNI}]: " SNI
+        ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/protocols.sh line 25:
+    read -p "回落目标 [回车默认]: " custom_dest
+    ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/protocols.sh line 41:
+    local NODE_UUID=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null)
+          ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/protocols.sh line 50:
+    local listen_addr=$(get_listen_address)
+          ^---------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/protocols.sh line 84:
+    local link_ipv4=$(generate_proto_link "reality" "${SERVER_IP}" "${PORT}" "uuid=${NODE_UUID}" "sni=${SNI}" "pbk=${REALITY_PUBLIC}" "sid=${SHORT_ID}")
+          ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+                                                     ^----------^ SC2153 (info): Possible misspelling: SERVER_IP may not be assigned. Did you mean SERVER_IPV6?
+
+
+In modules/protocols.sh line 93:
+        local link_ipv6=$(generate_proto_link "reality" "[${SERVER_IPV6}]" "${PORT}" "uuid=${NODE_UUID}" "sni=${SNI}" "pbk=${REALITY_PUBLIC}" "sid=${SHORT_ID}")
+              ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/protocols.sh line 116:
+        read -p "SNI域名 [${DEFAULT_SNI}]: " HY2_SNI
+        ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/protocols.sh line 125:
+    read -p "是否启用 Salamander 混淆？(y/N): " ENABLE_OBFS
+    ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/protocols.sh line 129:
+        read -p "混淆密码 (留空随机生成16位hex): " OBFS_PASSWORD
+        ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/protocols.sh line 139:
+    read -p "配置带宽? [y/N]: " ENABLE_BW
+    ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/protocols.sh line 144:
+        read -p "上传带宽 (Mbps, 留空不限制): " UP_MBPS
+        ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/protocols.sh line 145:
+        read -p "下载带宽 (Mbps, 留空不限制): " DOWN_MBPS
+        ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/protocols.sh line 173:
+    local NODE_HY2_PASSWORD=$(openssl rand -hex 16)
+          ^---------------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/protocols.sh line 186:
+    local listen_addr=$(get_listen_address)
+          ^---------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/protocols.sh line 230:
+    local link_ipv4=$(generate_proto_link "hysteria2" "${SERVER_IP}" "${PORT}" "password=${NODE_HY2_PASSWORD}" "sni=${HY2_SNI}" "obfs_type=${obfs_type_val}" "obfs_password=${obfs_password_val}")
+          ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/protocols.sh line 239:
+        local link_ipv6=$(generate_proto_link "hysteria2" "[${SERVER_IPV6}]" "${PORT}" "password=${NODE_HY2_PASSWORD}" "sni=${HY2_SNI}" "obfs_type=${obfs_type_val}" "obfs_password=${obfs_password_val}")
+              ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/protocols.sh line 258:
+    read -p "是否启用认证? [Y/n]: " ENABLE_AUTH
+    ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/protocols.sh line 264:
+    local NODE_SOCKS_USER="user_$(openssl rand -hex 4)"
+          ^-------------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/protocols.sh line 265:
+    local NODE_SOCKS_PASS=$(openssl rand -hex 16)
+          ^-------------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/protocols.sh line 267:
+    local listen_addr=$(get_listen_address)
+          ^---------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/protocols.sh line 342:
+        read -p "SNI域名 [${DEFAULT_SNI}]: " SHADOWTLS_SNI
+        ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/protocols.sh line 354:
+    local NODE_SHADOWTLS_PASSWORD=$(openssl rand -hex 16)
+          ^---------------------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/protocols.sh line 355:
+    local NODE_SS_PASSWORD=$(openssl rand -base64 16)
+          ^--------------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/protocols.sh line 359:
+    local listen_addr=$(get_listen_address)
+          ^---------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/protocols.sh line 383:
+    local ss_userinfo=$(echo -n "2022-blake3-aes-128-gcm:${NODE_SS_PASSWORD}" | base64 -w0 | sed 's/+/-/g; s/\//_/g; s/=//g')
+          ^---------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/protocols.sh line 399:
+    local plugin_base64_ipv4=$(echo -n "$plugin_json_ipv4" | base64 -w0 | sed 's/+/-/g; s/\//_/g; s/=//g')
+          ^----------------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/protocols.sh line 414:
+        local plugin_base64_ipv6=$(echo -n "$plugin_json_ipv6" | base64 -w0 | sed 's/+/-/g; s/\//_/g; s/=//g')
+              ^----------------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/protocols.sh line 446:
+        read -p "SNI域名 [${DEFAULT_SNI}]: " HTTPS_SNI
+        ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/protocols.sh line 458:
+    local NODE_UUID=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null)
+          ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/protocols.sh line 467:
+    local listen_addr=$(get_listen_address)
+          ^---------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/protocols.sh line 497:
+    local link_ipv4=$(generate_proto_link "https" "${SERVER_IP}" "${PORT}" "uuid=${NODE_UUID}" "sni=${HTTPS_SNI}")
+          ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/protocols.sh line 506:
+        local link_ipv6=$(generate_proto_link "https" "[${SERVER_IPV6}]" "${PORT}" "uuid=${NODE_UUID}" "sni=${HTTPS_SNI}")
+              ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/protocols.sh line 528:
+    read -p "启用 REALITY? [y/N]: " ENABLE_REALITY
+    ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/protocols.sh line 534:
+        read -p "SNI 域名 [${DEFAULT_SNI}]: " ANYTLS_SNI
+        ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/protocols.sh line 543:
+    local NODE_ANYTLS_PASSWORD=$(openssl rand -hex 16)
+          ^------------------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/protocols.sh line 549:
+            KEYS=$(${INSTALL_DIR}/sing-box generate reality-keypair 2>/dev/null)
+                   ^------------^ SC2086 (info): Double quote to prevent globbing and word splitting.
+
+Did you mean: 
+            KEYS=$("${INSTALL_DIR}"/sing-box generate reality-keypair 2>/dev/null)
+
+
+In modules/protocols.sh line 564:
+    read -p "指纹 [chrome]: " UTLS_FINGERPRINT
+    ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/protocols.sh line 584:
+    local listen_addr=$(get_listen_address)
+          ^---------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/protocols.sh line 793:
+            local link_ipv6=$(generate_proto_link "anytls" "[${SERVER_IPV6}]" "${PORT}" "password=${NODE_ANYTLS_PASSWORD}" "sni=${ANYTLS_SNI}" "fp=${UTLS_FINGERPRINT}" "insecure=true")
+                  ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/protocols.sh line 872:
+            local link_ipv6=$(generate_proto_link "anytls" "[${SERVER_IPV6}]" "${PORT}" "password=${NODE_ANYTLS_PASSWORD}" "sni=${ANYTLS_SNI}" "fp=${UTLS_FINGERPRINT}" "insecure=true")
+                  ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/protocols.sh line 899:
+        read -p "端口 [默认 ${default_port}]: " input_port
+        ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/protocols.sh line 923:
+    read -p "选择 [1-3, 默认 1]: " transport_choice
+    ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/protocols.sh line 938:
+        read -p "SNI 域名 [${DEFAULT_SNI}]: " CDN_SNI
+        ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/protocols.sh line 951:
+        read -p "WebSocket 路径 [${CDN_WS_PATH}]: " input_path
+        ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/protocols.sh line 953:
+        read -p "Host 头 [${CDN_WS_HOST}]: " input_host
+        ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/protocols.sh line 956:
+        read -p "gRPC service name [${CDN_GRPC_SERVICE}]: " input_grpc
+        ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/protocols.sh line 991:
+    local NODE_UUID=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null)
+          ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/protocols.sh line 1004:
+    local transport_json=$(_cdn_build_transport_json)
+          ^------------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/protocols.sh line 1005:
+    local listen_addr=$(get_listen_address)
+          ^---------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/protocols.sh line 1035:
+    local link_ipv4=$(generate_proto_link "vless-ws" "${SERVER_IP}" "${PORT}" \
+          ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/protocols.sh line 1045:
+        local link_ipv6=$(generate_proto_link "vless-ws" "[${SERVER_IPV6}]" "${PORT}" \
+              ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/protocols.sh line 1069:
+    local NODE_UUID=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null)
+          ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/protocols.sh line 1082:
+    local transport_json=$(_cdn_build_transport_json)
+          ^------------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/protocols.sh line 1083:
+    local listen_addr=$(get_listen_address)
+          ^---------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/protocols.sh line 1113:
+    local link_ipv4=$(generate_proto_link "vmess-ws" "${SERVER_IP}" "${PORT}" \
+          ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/protocols.sh line 1123:
+        local link_ipv6=$(generate_proto_link "vmess-ws" "[${SERVER_IPV6}]" "${PORT}" \
+              ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/protocols.sh line 1147:
+    local NODE_TROJAN_PASSWORD=$(openssl rand -hex 16)
+          ^------------------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/protocols.sh line 1156:
+    local transport_json=$(_cdn_build_transport_json)
+          ^------------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/protocols.sh line 1157:
+    local listen_addr=$(get_listen_address)
+          ^---------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/protocols.sh line 1187:
+    local link_ipv4=$(generate_proto_link "trojan-ws" "${SERVER_IP}" "${PORT}" \
+          ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/protocols.sh line 1197:
+        local link_ipv6=$(generate_proto_link "trojan-ws" "[${SERVER_IPV6}]" "${PORT}" \
+              ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 1:
+# ==================== sing-box 中转功能模块 ====================
+^-- SC2148 (error): Tips depend on target shell and yours is unknown. Add a shebang or a 'shell' directive.
+
+
+In modules/relay.sh line 16:
+        local json_base64=$(echo "$json" | base64 -w0)
+              ^---------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 34:
+        local json=$(echo "$json_base64" | base64 -d 2>/dev/null)
+              ^--^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 74:
+    ALL_LINKS_TEXT=""
+    ^------------^ SC2034 (warning): ALL_LINKS_TEXT appears unused. Verify use (or export if used externally).
+
+
+In modules/relay.sh line 75:
+    REALITY_LINKS=""
+    ^-----------^ SC2034 (warning): REALITY_LINKS appears unused. Verify use (or export if used externally).
+
+
+In modules/relay.sh line 76:
+    HYSTERIA2_LINKS=""
+    ^-------------^ SC2034 (warning): HYSTERIA2_LINKS appears unused. Verify use (or export if used externally).
+
+
+In modules/relay.sh line 77:
+    SOCKS5_LINKS=""
+    ^----------^ SC2034 (warning): SOCKS5_LINKS appears unused. Verify use (or export if used externally).
+
+
+In modules/relay.sh line 78:
+    SHADOWTLS_LINKS=""
+    ^-------------^ SC2034 (warning): SHADOWTLS_LINKS appears unused. Verify use (or export if used externally).
+
+
+In modules/relay.sh line 79:
+    HTTPS_LINKS=""
+    ^---------^ SC2034 (warning): HTTPS_LINKS appears unused. Verify use (or export if used externally).
+
+
+In modules/relay.sh line 80:
+    ANYTLS_LINKS=""
+    ^----------^ SC2034 (warning): ANYTLS_LINKS appears unused. Verify use (or export if used externally).
+
+
+In modules/relay.sh line 130:
+        local nic_ipv4=$(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | grep -vE '^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)' | head -1)
+              ^------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 139:
+        local nic_ipv6=$(ip -6 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | grep -vE '^fe80|^fc|^fd' | head -1)
+              ^------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 179:
+        INBOUND_IP_MODE="ipv6"
+        ^-------------^ SC2034 (warning): INBOUND_IP_MODE appears unused. Verify use (or export if used externally).
+
+
+In modules/relay.sh line 250:
+        read -p "监听端口 [${default_port}]: " PORT
+        ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/relay.sh line 259:
+            local proc_info=$(get_port_process "$PORT")
+                  ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 297:
+        local decoded=$(echo "$base64_part" | base64 -d 2>/dev/null)
+              ^-----^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 307:
+    local data=$(echo "$link" | sed 's|socks5\?://||')
+          ^--^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+                 ^-- SC2001 (style): See if you can use ${variable//search/replace} instead.
+
+
+In modules/relay.sh line 314:
+        local userpass=$(echo "$data" | cut -d'@' -f1)
+              ^------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 315:
+        local username=$(echo "$userpass" | cut -d':' -f1)
+              ^------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 316:
+        local password=$(echo "$userpass" | cut -d':' -f2-)
+              ^------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 317:
+        local server_port=$(echo "$data" | cut -d'@' -f2)
+              ^---------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 318:
+        local _sp=($(parse_server_port "$server_port"))
+                   ^-- SC2207 (warning): Prefer mapfile or read -a to split command output (or quote to avoid splitting).
+
+
+In modules/relay.sh line 343:
+        local _sp=($(parse_server_port "$data"))
+                   ^--------------------------^ SC2207 (warning): Prefer mapfile or read -a to split command output (or quote to avoid splitting).
+
+
+In modules/relay.sh line 378:
+    local protocol=$(echo "$link" | cut -d':' -f1)
+          ^------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 379:
+    local data=$(echo "$link" | sed 's|https\?://||')
+          ^--^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+                 ^-- SC2001 (style): See if you can use ${variable//search/replace} instead.
+
+
+In modules/relay.sh line 389:
+        local userpass=$(echo "$data" | cut -d'@' -f1)
+              ^------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 390:
+        local username=$(echo "$userpass" | cut -d':' -f1)
+              ^------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 391:
+        local password=$(echo "$userpass" | cut -d':' -f2)
+              ^------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 392:
+        local server_port=$(echo "$data" | cut -d'@' -f2 | cut -d'/' -f1 | cut -d'#' -f1 | cut -d'?' -f1)
+              ^---------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 393:
+        local _sp=($(parse_server_port "$server_port"))
+                   ^-- SC2207 (warning): Prefer mapfile or read -a to split command output (or quote to avoid splitting).
+
+
+In modules/relay.sh line 397:
+        local esc_server=$(json_escape "$server")
+              ^--------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 398:
+        local esc_username=$(json_escape "$username")
+              ^----------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 399:
+        local esc_password=$(json_escape "$password")
+              ^----------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 415:
+        local server_port=$(echo "$data" | cut -d'/' -f1 | cut -d'#' -f1 | cut -d'?' -f1)
+              ^---------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 416:
+        local _sp=($(parse_server_port "$server_port"))
+                   ^-- SC2207 (warning): Prefer mapfile or read -a to split command output (or quote to avoid splitting).
+
+
+In modules/relay.sh line 445:
+    local data=$(echo "$link" | sed 's|ss://||' | cut -d'#' -f1)
+          ^--^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 448:
+        local userinfo=$(echo "$data" | cut -d'@' -f1)
+              ^------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 449:
+        local server_port=$(echo "$data" | cut -d'@' -f2 | cut -d'?' -f1)
+              ^---------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 450:
+        local _sp=($(parse_server_port "$server_port"))
+                   ^-- SC2207 (warning): Prefer mapfile or read -a to split command output (or quote to avoid splitting).
+
+
+In modules/relay.sh line 454:
+        local decoded=$(echo "$userinfo" | base64 -d 2>/dev/null)
+              ^-----^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 460:
+        local method=$(echo "$decoded" | cut -d':' -f1)
+              ^----^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 461:
+        local password=$(echo "$decoded" | cut -d':' -f2-)
+              ^------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 464:
+        local relay_json="{
+              ^--------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 494:
+    local base64_data=$(echo "$link" | sed 's|vmess://||')
+          ^---------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+                        ^-- SC2001 (style): See if you can use ${variable//search/replace} instead.
+
+
+In modules/relay.sh line 495:
+    local json=$(echo "$base64_data" | base64 -d 2>/dev/null)
+          ^--^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 507:
+    local server=$(echo "$json" | jq -r '.add // .address')
+          ^----^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 508:
+    local port=$(echo "$json" | jq -r '.port')
+          ^--^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 509:
+    local uuid=$(echo "$json" | jq -r '.id')
+          ^--^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 510:
+    local alterId=$(echo "$json" | jq -r '.aid // 0')
+          ^-----^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 511:
+    local security=$(echo "$json" | jq -r '.scy // "auto"')
+          ^------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 512:
+    local net=$(echo "$json" | jq -r '.net // "tcp"')
+          ^-^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 513:
+    local path=$(echo "$json" | jq -r '.path // ""')
+          ^--^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 514:
+    local host=$(echo "$json" | jq -r '.host // ""')
+          ^--^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 515:
+    local tls=$(echo "$json" | jq -r '.tls // ""')
+          ^-^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 516:
+    local sni=$(echo "$json" | jq -r '.sni // ""')
+          ^-^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 517:
+    local alpn=$(echo "$json" | jq -r '.alpn // ""')
+          ^--^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 536:
+        local service_name=$(echo "$json" | jq -r '.path // ""')
+              ^----------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 565:
+            alpn_config=", \"alpn\": [\"$(echo "$alpn" | sed 's/,/","/g')\"]"
+                                          ^----------------------------^ SC2001 (style): See if you can use ${variable//search/replace} instead.
+
+
+In modules/relay.sh line 575:
+    local relay_json="{
+          ^--------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 602:
+    local data=$(echo "$link" | sed 's|vless://||')
+          ^--^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+                 ^-- SC2001 (style): See if you can use ${variable//search/replace} instead.
+
+
+In modules/relay.sh line 603:
+    local uuid=$(echo "$data" | cut -d'@' -f1)
+          ^--^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 604:
+    local server_port_params=$(echo "$data" | cut -d'@' -f2)
+          ^----------------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 605:
+    local server_port_part=$(echo "$server_port_params" | cut -d'?' -f1 | cut -d'#' -f1)
+          ^--------------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 606:
+    local _sp=($(parse_server_port "$server_port_part"))
+               ^-- SC2207 (warning): Prefer mapfile or read -a to split command output (or quote to avoid splitting).
+
+
+In modules/relay.sh line 614:
+    local params=$(echo "$server_port_params" | grep -o '?.*' | sed 's|?||' | cut -d'#' -f1)
+          ^----^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 678:
+    local relay_json="{
+          ^--------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 708:
+    local data=$(echo "$link" | sed 's|trojan://||')
+          ^--^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+                 ^-- SC2001 (style): See if you can use ${variable//search/replace} instead.
+
+
+In modules/relay.sh line 709:
+    local password=$(echo "$data" | cut -d'@' -f1)
+          ^------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 710:
+    local server_port_params=$(echo "$data" | cut -d'@' -f2)
+          ^----------------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 711:
+    local server_port_part=$(echo "$server_port_params" | cut -d'?' -f1 | cut -d'#' -f1)
+          ^--------------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 712:
+    local _sp=($(parse_server_port "$server_port_part"))
+               ^-- SC2207 (warning): Prefer mapfile or read -a to split command output (or quote to avoid splitting).
+
+
+In modules/relay.sh line 716:
+    local params=$(echo "$server_port_params" | grep -o '?.*' | sed 's|?||' | cut -d'#' -f1)
+          ^----^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 787:
+    local relay_json="{
+          ^--------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 819:
+    local server_port_part=$(echo "$rest" | cut -d'?' -f1 | cut -d'#' -f1 | sed 's|/$||')
+          ^--------------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 820:
+    local _sp=($(parse_server_port "$server_port_part"))
+               ^-- SC2207 (warning): Prefer mapfile or read -a to split command output (or quote to avoid splitting).
+
+
+In modules/relay.sh line 863:
+    local tls_config="{
+          ^--------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 880:
+    local relay_json="{
+          ^--------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 907:
+    local data=$(echo "$link" | sed 's|anytls://||')
+          ^--^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+                 ^-- SC2001 (style): See if you can use ${variable//search/replace} instead.
+
+
+In modules/relay.sh line 908:
+    local userinfo=$(echo "$data" | cut -d'@' -f1)
+          ^------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 909:
+    local server_port_params=$(echo "$data" | cut -d'@' -f2)
+          ^----------------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 910:
+    local server_port_part=$(echo "$server_port_params" | cut -d'?' -f1 | cut -d'#' -f1)
+          ^--------------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 911:
+    local _sp=($(parse_server_port "$server_port_part"))
+               ^-- SC2207 (warning): Prefer mapfile or read -a to split command output (or quote to avoid splitting).
+
+
+In modules/relay.sh line 919:
+    local params=$(echo "$server_port_params" | grep -o '?.*' | sed 's|?||' | cut -d'#' -f1)
+          ^----^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 991:
+    local relay_json="{
+          ^--------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/relay.sh line 1047:
+        read -p "请选择 [0-5]: " r_choice
+        ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/relay.sh line 1100:
+                read -p "粘贴中转链接: " RELAY_LINK
+                ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/relay.sh line 1106:
+                    read -p "请输入此节点的描述信息 (如：香港-电信-1x 或 日本-软银-2x，留空则自动生成): " custom_desc
+                    ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/relay.sh line 1161:
+                read -p "请输入节点序号 (输入 0 返回): " node_idx
+                ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/relay.sh line 1183:
+                read -p "请选择: " relay_idx
+                ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/relay.sh line 1186:
+                    INBOUND_RELAY_TAGS[$n]="direct"
+                                       ^-- SC2004 (style): $/${} is unnecessary on arithmetic variables.
+
+
+In modules/relay.sh line 1190:
+                    INBOUND_RELAY_TAGS[$n]="${RELAY_TAGS[$r]}"
+                                       ^-- SC2004 (style): $/${} is unnecessary on arithmetic variables.
+
+
+In modules/relay.sh line 1216:
+                read -p "请选择要删除的中转 (输入 0 删除全部, 输入 -1 取消): " del_idx
+                ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/relay.sh line 1230:
+                            INBOUND_RELAY_TAGS[$i]="direct"
+                                               ^-- SC2004 (style): $/${} is unnecessary on arithmetic variables.
+
+
+In modules/relay.sh line 1251:
+                        unset RELAY_TAGS[$d]
+                              ^------------^ SC2184 (warning): Quote arguments to unset so they're not glob expanded.
+
+
+In modules/relay.sh line 1252:
+                        unset RELAY_JSONS[$d]
+                              ^-------------^ SC2184 (warning): Quote arguments to unset so they're not glob expanded.
+
+
+In modules/relay.sh line 1253:
+                        unset RELAY_DESCS[$d]
+                              ^-------------^ SC2184 (warning): Quote arguments to unset so they're not glob expanded.
+
+
+In modules/relay.sh line 1263:
+                                INBOUND_RELAY_TAGS[$i]="direct"
+                                                   ^-- SC2004 (style): $/${} is unnecessary on arithmetic variables.
+
+
+In modules/relay.sh line 1270:
+                            IFS='|' read -r in_tag match_type match_val relay_tag desc <<< "$route"
+                                            ^----^ SC2034 (warning): in_tag appears unused. Verify use (or export if used externally).
+                                                   ^--------^ SC2034 (warning): match_type appears unused. Verify use (or export if used externally).
+                                                              ^-------^ SC2034 (warning): match_val appears unused. Verify use (or export if used externally).
+
+
+In modules/relay.sh line 1306:
+                read -p "请选择要修改的中转 (输入 -1 取消): " edit_idx
+                ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/relay.sh line 1325:
+                read -p "粘贴新的中转链接: " NEW_RELAY_LINK
+                ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/relay.sh line 1333:
+                read -p "请输入新的描述信息 (留空则自动生成): " new_custom_desc
+                ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/relay.sh line 1381:
+                        new_json=$(echo "$new_json" | sed "s/\"tag\":\"${new_tag}\"/\"tag\":\"${old_tag}\"/g")
+                                   ^-- SC2001 (style): See if you can use ${variable//search/replace} instead.
+
+
+In modules/relay.sh line 1389:
+                    RELAY_JSONS[$e]="$new_json"
+                                ^-- SC2004 (style): $/${} is unnecessary on arithmetic variables.
+
+
+In modules/relay.sh line 1390:
+                    RELAY_DESCS[$e]="$new_desc"
+                                ^-- SC2004 (style): $/${} is unnecessary on arithmetic variables.
+
+
+In modules/tune.sh line 1:
+# ==================== 系统网络调优模块 ====================
+^-- SC2148 (error): Tips depend on target shell and yours is unknown. Add a shebang or a 'shell' directive.
+
+
+In modules/tune.sh line 47:
+    local kernel_ver=$(uname -r | cut -d'-' -f1)
+          ^--------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 48:
+    local major=$(echo "$kernel_ver" | cut -d'.' -f1)
+          ^---^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 49:
+    local minor=$(echo "$kernel_ver" | cut -d'.' -f2)
+          ^---^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 82:
+    local available=$(sysctl -n net.ipv4.tcp_available_congestion_control 2>/dev/null)
+          ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 109:
+                local val=$(sysctl -n "$key" 2>/dev/null)
+                      ^-^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 213:
+    local kernel_status=$(check_kernel_version)
+          ^-----------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 220:
+    local bbr_status=$(check_bbr_available)
+          ^--------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 255:
+    local mem_total_kb=$(grep MemTotal /proc/meminfo 2>/dev/null | awk '{print $2}')
+          ^----------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 258:
+    local mem_avail_kb=$(grep MemAvailable /proc/meminfo 2>/dev/null | awk '{print $2}')
+          ^----------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 262:
+    local disk_total_gb=$(df -BG / 2>/dev/null | awk 'NR==2{print $2}' | tr -d 'G')
+          ^-----------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 263:
+    local disk_avail_gb=$(df -BG / 2>/dev/null | awk 'NR==2{print $4}' | tr -d 'G')
+          ^-----------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 266:
+    local cpu_cores=$(nproc 2>/dev/null || grep -c ^processor /proc/cpuinfo 2>/dev/null || echo 1)
+          ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 271:
+        local default_if=$(ip route show default 2>/dev/null | awk '{print $5; exit}')
+              ^--------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 273:
+            local speed=$(ethtool "$default_if" 2>/dev/null | awk '/Speed:/{print $2}' | tr -d 'Mb/s')
+                  ^---^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 279:
+    local swap_total_mb=$(free -m 2>/dev/null | awk '/^Swap:/{print $2}')
+          ^-----------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 426:
+    local kernel_status=$(check_kernel_version)
+          ^-----------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 432:
+    local bbr_status=$(check_bbr_available)
+          ^--------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 462:
+        read -p "  实际带宽 [Mbps，建议 ${eff_bw}，范围 10-10000]: " input_bw
+        ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/tune.sh line 481:
+        read -p "  目标 RTT [ms，建议 ${eff_rtt}（国际线路默认 250，亚太 80，欧美 150）]: " input_rtt
+        ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/tune.sh line 519:
+        read -p "  TCP 缓冲区上限 [MB，建议 ${suggest_rmem_mb}，范围 1-64]: " input_rmem
+        ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/tune.sh line 537:
+        read -p "  网卡 backlog [建议 ${SUGGEST_BACKLOG}，范围 1000-65535]: " input_backlog
+        ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/tune.sh line 555:
+        read -p "  somaxconn [建议 ${SUGGEST_SOMAXCONN}，范围 128-65535]: " input_somaxconn
+        ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/tune.sh line 573:
+        read -p "  vm.swappiness [建议 ${SUGGEST_SWAPPINESS}，范围 0-100]: " input_swappiness
+        ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/tune.sh line 633:
+    local mem_mb=$(free -m 2>/dev/null | awk '/^Mem:/{print $2}')
+          ^----^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 650:
+    read -p "请输入 swap 大小(MB，默认 ${suggested_swap}): " swap_size
+    ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/tune.sh line 659:
+    local free_mb=$(df -m / 2>/dev/null | awk 'NR==2{print $4}')
+          ^-----^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 666:
+    local fstype=$(findmnt -no FSTYPE / 2>/dev/null)
+          ^----^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 798:
+    local cc=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)
+          ^-- SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 799:
+    local qdisc=$(sysctl -n net.core.default_qdisc 2>/dev/null)
+          ^---^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 800:
+    local rmem_max=$(sysctl -n net.core.rmem_max 2>/dev/null)
+          ^------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 801:
+    local wmem_max=$(sysctl -n net.core.wmem_max 2>/dev/null)
+          ^------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 802:
+    local tcp_rmem=$(sysctl -n net.ipv4.tcp_rmem 2>/dev/null)
+          ^------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 803:
+    local tcp_wmem=$(sysctl -n net.ipv4.tcp_wmem 2>/dev/null)
+          ^------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 804:
+    local notsent=$(sysctl -n net.ipv4.tcp_notsent_lowat 2>/dev/null)
+          ^-----^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 805:
+    local slow_start=$(sysctl -n net.ipv4.tcp_slow_start_after_idle 2>/dev/null)
+          ^--------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 808:
+    local netdev_backlog=$(sysctl -n net.core.netdev_max_backlog 2>/dev/null)
+          ^------------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 809:
+    local somaxconn=$(sysctl -n net.core.somaxconn 2>/dev/null)
+          ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 810:
+    local syn_backlog=$(sysctl -n net.ipv4.tcp_max_syn_backlog 2>/dev/null)
+          ^---------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 811:
+    local tw_buckets=$(sysctl -n net.ipv4.tcp_max_tw_buckets 2>/dev/null)
+          ^--------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 812:
+    local tw_reuse=$(sysctl -n net.ipv4.tcp_tw_reuse 2>/dev/null)
+          ^------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 813:
+    local fin_timeout=$(sysctl -n net.ipv4.tcp_fin_timeout 2>/dev/null)
+          ^---------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 814:
+    local port_range=$(sysctl -n net.ipv4.ip_local_port_range 2>/dev/null)
+          ^--------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 815:
+    local keepalive=$(sysctl -n net.ipv4.tcp_keepalive_time 2>/dev/null)
+          ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 816:
+    local fastopen=$(sysctl -n net.ipv4.tcp_fastopen 2>/dev/null)
+          ^------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 819:
+    local swappiness=$(sysctl -n vm.swappiness 2>/dev/null)
+          ^--------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 820:
+    local vfs_cache=$(sysctl -n vm.vfs_cache_pressure 2>/dev/null)
+          ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 821:
+    local dirty_ratio=$(sysctl -n vm.dirty_ratio 2>/dev/null)
+          ^---------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 822:
+    local dirty_bg=$(sysctl -n vm.dirty_background_ratio 2>/dev/null)
+          ^------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 823:
+    local overcommit=$(sysctl -n vm.overcommit_memory 2>/dev/null)
+          ^--------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 913:
+    local bbr_conns=$(echo "$ss_out" | grep -c 'bbr' || true)
+          ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 914:
+    local cubic_conns=$(echo "$ss_out" | grep -c 'cubic' || true)
+          ^---------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 915:
+    local reno_conns=$(echo "$ss_out" | grep -c 'reno' || true)
+          ^--------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 943:
+    local kernel_status=$(check_kernel_version)
+          ^-----------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 956:
+        local bbr_status=$(check_bbr_available)
+              ^--------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 977:
+        local mem_mb=$(free -m 2>/dev/null | awk '/^Mem:/{print $2}')
+              ^----^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 980:
+            local free_mb=$(df -m / 2>/dev/null | awk 'NR==2{print $4}')
+                  ^-----^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 1013:
+        local cc=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)
+              ^-- SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 1014:
+        local qdisc=$(sysctl -n net.core.default_qdisc 2>/dev/null)
+              ^---^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 1015:
+        local swappiness=$(sysctl -n vm.swappiness 2>/dev/null)
+              ^--------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 1053:
+        read -p "请选择 [0-6]: " t_choice
+        ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+
+In modules/tune.sh line 1102:
+            local swap_size=$(du -m "$TUNE_SWAP_FILE" 2>/dev/null | cut -f1)
+                  ^-------^ SC2155 (warning): Declare and assign separately to avoid masking return values.
+
+
+In modules/tune.sh line 1114:
+        read -p "请选择 [0-2]: " s_choice
+        ^--^ SC2162 (info): read without -r will mangle backslashes.
+
+For more information:
+  https://www.shellcheck.net/wiki/SC2148 -- Tips depend on target shell and y...
+  https://www.shellcheck.net/wiki/SC2034 -- ALL_LINKS_FILE appears unused. Ve...
+  https://www.shellcheck.net/wiki/SC2046 -- Quote this to prevent word splitt...
