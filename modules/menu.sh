@@ -1082,7 +1082,18 @@ main() {
         print_error "需要 root 权限"
         exit 1
     fi
-    
+
+    # 并发控制：防止多实例同时运行导致配置写入冲突
+    local _lockfile="/var/lock/sing-box-setup.lock"
+    mkdir -p "$(dirname "$_lockfile")" 2>/dev/null
+    exec 200>"$_lockfile"
+    if ! flock -n 200; then
+        print_error "检测到已有实例正在运行，请等待其完成后再试"
+        print_info "如确信无其他实例，可删除锁文件: rm -f $_lockfile"
+        exit 1
+    fi
+    trap 'flock -u 200 2>/dev/null' EXIT INT TERM
+
     # DEBUG 模式支持: DEBUG=1 ./install.sh
     if [[ "${DEBUG:-0}" -eq 1 ]]; then
         set -x

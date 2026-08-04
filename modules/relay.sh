@@ -31,11 +31,15 @@ load_relays_from_file() {
         # 跳过注释和空行
         [[ "$tag" =~ ^#.*$ || -z "$tag" ]] && continue
         
-        local json=$(echo "$json_base64" | base64 -d 2>/dev/null)
-        if [[ -n "$json" ]]; then
+        local json
+        json=$(echo "$json_base64" | base64 -d 2>/dev/null)
+        # 跳过解码失败或 JSON 格式无效的条目
+        if [[ -n "$json" ]] && echo "$json" | jq . >/dev/null 2>&1; then
             RELAY_TAGS+=("$tag")
             RELAY_DESCS+=("$desc")
             RELAY_JSONS+=("$json")
+        else
+            print_warning "中转配置条目 [$tag] 解码失败或格式无效，已跳过"
         fi
     done < "${RELAY_FILE}"
 }

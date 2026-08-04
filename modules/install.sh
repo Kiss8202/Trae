@@ -72,7 +72,11 @@ install_singbox() {
             print_warning "获取版本信息失败，重试 ${retry}/${max_retries}..."
             [[ $retry -lt $max_retries ]] && sleep 3
         done
-        [[ -z "$LATEST" ]] && LATEST="1.13.12"
+        if [[ -z "$LATEST" ]]; then
+            LATEST="1.13.12"
+            print_warning "无法获取最新版本（网络问题或被墙），回退到已知稳定版本 ${LATEST}"
+            print_warning "建议检查网络连接或设置 GH_MIRROR 环境变量"
+        fi
         print_info "目标版本: ${LATEST}"
 
         # 清理可能残留的半成品
