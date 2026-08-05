@@ -816,7 +816,7 @@ delete_all_nodes() {
         esac
     fi
 
-    cat > ${CONFIG_FILE} << EOFCONFIG
+    cat > "${CONFIG_FILE}.tmp.$$" << EOFCONFIG
 {
   "log": {
     "level": "info",
@@ -835,7 +835,17 @@ delete_all_nodes() {
   }
 }
 EOFCONFIG
-    
+    # 原子替换 + JSON 校验，失败回滚避免留下损坏配置
+    if jq . "${CONFIG_FILE}.tmp.$$" >/dev/null 2>&1; then
+        mv -f "${CONFIG_FILE}.tmp.$$" "${CONFIG_FILE}"
+        chmod 600 "${CONFIG_FILE}" 2>/dev/null
+        if id sing-box &>/dev/null; then chown sing-box:sing-box "${CONFIG_FILE}" 2>/dev/null || true; fi
+    else
+        rm -f "${CONFIG_FILE}.tmp.$$"
+        print_error "配置文件写入后 JSON 校验失败，已回滚"
+        return 1
+    fi
+
     print_info "停止 sing-box 服务..."
     svc_stop
     
@@ -1237,7 +1247,7 @@ generate_config() {
     local dns_json
     dns_json=$(build_dns_config)
 
-    cat > ${CONFIG_FILE} << EOFCONFIG
+    cat > "${CONFIG_FILE}.tmp.$$" << EOFCONFIG
 {
   "log": {
     "level": "info",
@@ -1250,8 +1260,11 @@ generate_config() {
 }
 EOFCONFIG
 
-    # 写入完整性校验：磁盘满/权限不足可能导致截断
-    if ! jq . "${CONFIG_FILE}" >/dev/null 2>&1; then
+    # 原子替换 + 写入完整性校验：磁盘满/权限不足可能导致截断
+    if jq . "${CONFIG_FILE}.tmp.$$" >/dev/null 2>&1; then
+        mv -f "${CONFIG_FILE}.tmp.$$" "${CONFIG_FILE}"
+    else
+        rm -f "${CONFIG_FILE}.tmp.$$"
         print_error "配置文件生成后 JSON 校验失败（可能磁盘满或写入被截断）"
         return 1
     fi

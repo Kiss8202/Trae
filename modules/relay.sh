@@ -1442,8 +1442,11 @@ setup_relay() {
                     if command -v jq &>/dev/null; then
                         new_json=$(echo "$new_json" | jq -c --arg oldtag "$old_tag" '.tag = $oldtag' 2>/dev/null || echo "$new_json")
                     else
-                        # jq 不可用时回退到 sed（仅替换 .tag 字段附近，减少误伤）
-                        new_json=$(echo "$new_json" | sed "s/\"tag\":\"${new_tag}\"/\"tag\":\"${old_tag}\"/g")
+                        # jq 不可用时回退到 sed：转义 tag 中的 sed 特殊字符（/ & \）避免出错
+                        local esc_new_tag esc_old_tag
+                        esc_new_tag=$(printf '%s\n' "$new_tag" | sed 's/[&/\]/\\&/g')
+                        esc_old_tag=$(printf '%s\n' "$old_tag" | sed 's/[&/\]/\\&/g')
+                        new_json=$(echo "$new_json" | sed "s/\"tag\":\"${esc_new_tag}\"/\"tag\":\"${esc_old_tag}\"/g")
                     fi
 
                     # 恢复原数组，替换指定位置
