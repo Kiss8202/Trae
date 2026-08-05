@@ -41,7 +41,10 @@ jobs:
           cd /tmp
           tar czf sb-modules.tar.gz -C sb-modules .
           sha256sum sb-modules.tar.gz | awk '{print $1}' > sb-modules.tar.gz.sha256
-          cp sb-modules.tar.gz sb-modules.tar.gz.sha256 "$GITHUB_WORKSPACE/"
+          # 同时为 install.sh 生成 sha256，用于引导脚本自更新完整性校验
+          cp "$GITHUB_WORKSPACE/install.sh" /tmp/install.sh
+          sha256sum install.sh | awk '{print $1}' > install.sh.sha256
+          cp sb-modules.tar.gz sb-modules.tar.gz.sha256 install.sh install.sh.sha256 "$GITHUB_WORKSPACE/"
 
       - name: Delete existing release
         env:
@@ -66,4 +69,4 @@ jobs:
             -R "$GITHUB_REPOSITORY" \
             --title "sing-box 管理脚本 ${{ steps.ver.outputs.version }}" \
             --notes "$NOTES" \
-            sb-modules.tar.gz sb-modules.tar.gz.sha256
+            sb-modules.tar.gz sb-modules.tar.gz.sha256 install.sh.sha256

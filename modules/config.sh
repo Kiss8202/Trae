@@ -120,19 +120,35 @@ ip_config_menu() {
             8)
                 read -p "请输入 IPv4 地址: " new_ipv4
                 if [[ -n "$new_ipv4" ]]; then
-                    SERVER_IP="$new_ipv4"
-                    save_ip_config
-                    print_success "IPv4 地址已更新: ${SERVER_IP}"
-                    echo -e "${YELLOW}提示: 需要重新生成链接文件${NC}"
+                    # 校验 IPv4 格式（四段 0-255，点分隔）
+                    if [[ ! "$new_ipv4" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+                        print_error "IPv4 格式无效: ${new_ipv4}（应为 x.x.x.x）"
+                    elif ! validate_ipv4_octets "$new_ipv4"; then
+                        print_error "IPv4 字段越界: ${new_ipv4}（每段 0-255）"
+                    else
+                        SERVER_IP="$new_ipv4"
+                        save_ip_config
+                        print_success "IPv4 地址已更新: ${SERVER_IP}"
+                        echo -e "${YELLOW}提示: 需要重新生成链接文件${NC}"
+                    fi
                 fi
                 ;;
             9)
                 read -p "请输入 IPv6 地址: " new_ipv6
                 if [[ -n "$new_ipv6" ]]; then
-                    SERVER_IPV6="$new_ipv6"
-                    save_ip_config
-                    print_success "IPv6 地址已更新: ${SERVER_IPV6}"
-                    echo -e "${YELLOW}提示: 需要重新生成链接文件${NC}"
+                    # 去除外层方括号（用户可能从 URL 复制）
+                    new_ipv6="${new_ipv6#\[}"
+                    new_ipv6="${new_ipv6%\]}"
+                    # 简单 IPv6 格式校验（含 :: 缩写）
+                    if [[ ! "$new_ipv6" =~ ^([0-9a-fA-F]{1,4}:){2,7}[0-9a-fA-F]{0,4}$ ]] && \
+                       [[ ! "$new_ipv6" =~ ^([0-9a-fA-F]{0,4}:){1,7}:([0-9a-fA-F]{0,4}:){0,6}[0-9a-fA-F]{0,4}$ ]]; then
+                        print_error "IPv6 格式无效: ${new_ipv6}"
+                    else
+                        SERVER_IPV6="$new_ipv6"
+                        save_ip_config
+                        print_success "IPv6 地址已更新: ${SERVER_IPV6}"
+                        echo -e "${YELLOW}提示: 需要重新生成链接文件${NC}"
+                    fi
                 fi
                 ;;
             0)
@@ -218,6 +234,11 @@ _modify_menu_Reality() {
                 read -p "SNI: " new_sni
                 if [[ -z "$new_sni" ]]; then
                     new_sni=$(get_random_sni)
+                fi
+                # 安全校验：SNI 必须是合法域名，防止路径穿越（gen_cert_for_sni 会用 sni 拼路径）
+                if ! validate_sni "$new_sni"; then
+                    print_error "SNI 格式无效，已拒绝修改"
+                    continue
                 fi
                 # 回落目标为默认时同步更新，自定义时只更新 server_name
                 if [[ "$current_hs_server" == "$current_sni" || -z "$current_hs_server" ]]; then
@@ -320,6 +341,11 @@ _modify_menu_Hysteria2() {
                 read -p "SNI: " new_sni
                 if [[ -z "$new_sni" ]]; then
                     new_sni=$(get_random_sni)
+                fi
+                # 安全校验：SNI 必须是合法域名，防止路径穿越（gen_cert_for_sni 会用 sni 拼路径）
+                if ! validate_sni "$new_sni"; then
+                    print_error "SNI 格式无效，已拒绝修改"
+                    continue
                 fi
                 jq_update_config --arg tag "$tag" --arg sni "$new_sni" --arg certdir "$CERT_DIR" \
                     '(.inbounds[] | select(.tag == $tag)) |= (.tls.server_name = $sni | .tls.certificate_path = ($sni | $certdir + "/" + . + "/cert.pem") | .tls.key_path = ($sni | $certdir + "/" + . + "/private.key"))'
@@ -457,6 +483,11 @@ _modify_menu_ShadowTLS() {
                 if [[ -z "$new_sni" ]]; then
                     new_sni=$(get_random_sni)
                 fi
+                # 安全校验：SNI 必须是合法域名，防止路径穿越（gen_cert_for_sni 会用 sni 拼路径）
+                if ! validate_sni "$new_sni"; then
+                    print_error "SNI 格式无效，已拒绝修改"
+                    continue
+                fi
                 jq_update_config --arg tag "$tag" --arg sni "$new_sni" \
                     '(.inbounds[] | select(.tag == $tag)) |= (.handshake.server = $sni)'
                 INBOUND_SNIS[$array_idx]="$new_sni"
@@ -513,6 +544,11 @@ _modify_menu_HTTPS() {
                 read -p "SNI: " new_sni
                 if [[ -z "$new_sni" ]]; then
                     new_sni=$(get_random_sni)
+                fi
+                # 安全校验：SNI 必须是合法域名，防止路径穿越（gen_cert_for_sni 会用 sni 拼路径）
+                if ! validate_sni "$new_sni"; then
+                    print_error "SNI 格式无效，已拒绝修改"
+                    continue
                 fi
                 jq_update_config --arg tag "$tag" --arg sni "$new_sni" --arg certdir "$CERT_DIR" \
                     '(.inbounds[] | select(.tag == $tag)) |= (.tls.server_name = $sni | .tls.certificate_path = ($sni | $certdir + "/" + . + "/cert.pem") | .tls.key_path = ($sni | $certdir + "/" + . + "/private.key"))'
@@ -578,6 +614,11 @@ _modify_menu_AnyTLS() {
                 read -p "SNI: " new_sni
                 if [[ -z "$new_sni" ]]; then
                     new_sni=$(get_random_sni)
+                fi
+                # 安全校验：SNI 必须是合法域名，防止路径穿越（gen_cert_for_sni 会用 sni 拼路径）
+                if ! validate_sni "$new_sni"; then
+                    print_error "SNI 格式无效，已拒绝修改"
+                    continue
                 fi
                 if [[ $is_reality -eq 1 ]]; then
                     jq_update_config --arg tag "$tag" --arg sni "$new_sni" \
@@ -954,16 +995,23 @@ build_route_rules() {
         fi
 
         # 根据匹配类型生成对应的 sing-box 规则
+        # match_value 必须经过 json_escape，防止用户输入破坏 JSON 结构
+        local escaped_value
+        escaped_value=$(json_escape "$match_value")
         local rule_part=""
         case "$match_type" in
-            domain_suffix)  rule_part="\"domain_suffix\":[\"${match_value}\"]" ;;
-            domain)         rule_part="\"domain\":[\"${match_value}\"]" ;;
-            domain_keyword) rule_part="\"domain_keyword\":[\"${match_value}\"]" ;;
-            ip_cidr)        rule_part="\"ip_cidr\":[\"${match_value}\"]" ;;
+            domain_suffix)  rule_part="\"domain_suffix\":[\"${escaped_value}\"]" ;;
+            domain)         rule_part="\"domain\":[\"${escaped_value}\"]" ;;
+            domain_keyword) rule_part="\"domain_keyword\":[\"${escaped_value}\"]" ;;
+            ip_cidr)        rule_part="\"ip_cidr\":[\"${escaped_value}\"]" ;;
             *)              continue ;;
         esac
 
-        route_rules+=("{\"inbound\":[\"${inbound_tag}\"],${rule_part},\"outbound\":\"${relay_tag}\"}")
+        # inbound_tag 和 relay_tag 由脚本生成（不含特殊字符），但仍做转义防御
+        local escaped_inbound escaped_relay
+        escaped_inbound=$(json_escape "$inbound_tag")
+        escaped_relay=$(json_escape "$relay_tag")
+        route_rules+=("{\"inbound\":[\"${escaped_inbound}\"],${rule_part},\"outbound\":\"${escaped_relay}\"}")
     done
 
     # 2. 为每个节点添加默认路由（仅当节点配置了中转且不是 direct）
@@ -1160,6 +1208,11 @@ generate_config() {
     if [[ -f "${CONFIG_FILE}" ]]; then
         local backup_file="${CONFIG_FILE}.bak"
         cp "${CONFIG_FILE}" "${backup_file}" 2>/dev/null
+        # .bak 含全部密钥/密码，权限必须 600（与 config.json 一致）
+        chmod 600 "${backup_file}" 2>/dev/null
+        if id sing-box &>/dev/null; then
+            chown sing-box:sing-box "${backup_file}" 2>/dev/null || true
+        fi
         print_info "已备份配置到: ${backup_file}"
     fi
 
@@ -1196,6 +1249,18 @@ generate_config() {
   "route": ${route_json}
 }
 EOFCONFIG
+
+    # 写入完整性校验：磁盘满/权限不足可能导致截断
+    if ! jq . "${CONFIG_FILE}" >/dev/null 2>&1; then
+        print_error "配置文件生成后 JSON 校验失败（可能磁盘满或写入被截断）"
+        return 1
+    fi
+    # 安全权限：config.json 含 REALITY 私钥和所有协议密码，必须 600
+    chmod 600 "${CONFIG_FILE}" 2>/dev/null
+    # 如果 sing-box 用户存在，归属到 sing-box 用户（服务降权运行后需要读取）
+    if id sing-box &>/dev/null; then
+        chown sing-box:sing-box "${CONFIG_FILE}" 2>/dev/null || true
+    fi
 
     print_success "配置文件生成完成"
 }
@@ -1251,6 +1316,8 @@ start_svc() {
     
     if svc_is_active; then
         print_success "服务启动成功"
+        # 启动成功后清理 .bak（含密钥，避免长期持久化泄露）
+        rm -f "${CONFIG_FILE}.bak" 2>/dev/null
     else
         print_error "服务启动失败，查看日志："
         if [[ $ALPINE -eq 1 ]]; then

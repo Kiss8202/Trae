@@ -37,9 +37,16 @@ if [[ -z "$GH_MIRROR" ]] && [[ -f "/etc/sing-box/ip_config.conf" ]]; then
     [[ -n "$_saved_mirror" ]] && GH_MIRROR="$_saved_mirror"
     unset _saved_mirror
 fi
+# 镜像安全校验：必须 https:// 开头，禁止 file:// http:// 等不安全协议
+if [[ -n "$GH_MIRROR" ]] && [[ "$GH_MIRROR" != https://* ]]; then
+    echo "[引导] 警告: GH_MIRROR 必须 https:// 开头，已忽略: ${GH_MIRROR}"
+    GH_MIRROR=""
+fi
 
 # GitHub 直连 URL
 GH_RELEASE_URL="https://github.com/${REPO}/releases/download/latest/sb-modules.tar.gz"
+GH_RELEASE_SHA256_URL="https://github.com/${REPO}/releases/download/latest/sb-modules.tar.gz.sha256"
+GH_INSTALL_SHA256_URL="https://github.com/${REPO}/releases/download/latest/install.sh.sha256"
 GH_RAW_URL="https://raw.githubusercontent.com/${REPO}/main/modules"
 GH_INSTALL_RAW_URL="https://raw.githubusercontent.com/${REPO}/main/install.sh"
 
@@ -87,15 +94,32 @@ multi_source_download() {
     return 1
 }
 
-# 下载并解压模块压缩包
+# 下载并解压模块压缩包（含 sha256 完整性校验）
 download_modules_archive() {
     # mktemp 模板必须以 XXXXXX 结尾（BusyBox mktemp 不支持带后缀的模板）
     local tmp_file=$(mktemp /tmp/sb-modules.XXXXXX)
+    local tmp_sha=$(mktemp /tmp/sb-modules-sha.XXXXXX)
     local tmp_dir=$(mktemp -d /tmp/sb-modules-ex.XXXXXX)
     echo -n "[引导] 下载模块压缩包 ... "
 
     local release_urls=($(build_download_urls "$GH_RELEASE_URL"))
     if multi_source_download "${tmp_file}" "${release_urls[@]}"; then
+        # sha256 完整性校验：下载校验文件并比对
+        local sha_urls=($(build_download_urls "$GH_RELEASE_SHA256_URL"))
+        if ! multi_source_download "${tmp_sha}" "${sha_urls[@]}" || [[ ! -s "${tmp_sha}" ]]; then
+            echo "失败（无法下载 sha256 校验文件，拒绝未校验的模块）"
+            rm -rf "${tmp_dir}" "${tmp_file}" "${tmp_sha}"
+            return 1
+        fi
+        local expected_sha actual_sha
+        expected_sha=$(awk '{print $1}' "${tmp_sha}" | tr -d '[:space:]')
+        actual_sha=$(sha256sum "${tmp_file}" | awk '{print $1}')
+        if [[ -z "$expected_sha" ]] || [[ "$expected_sha" != "$actual_sha" ]]; then
+            echo "失败（sha256 校验不匹配）"
+            rm -rf "${tmp_dir}" "${tmp_file}" "${tmp_sha}"
+            return 1
+        fi
+
         # 验证是否为有效的 gzip 文件
         if tar -tzf "${tmp_file}" >/dev/null 2>&1; then
             if tar -xzf "${tmp_file}" -C "${tmp_dir}" 2>/dev/null; then
@@ -114,27 +138,27 @@ download_modules_archive() {
                     for module in core install links dns relay protocols config tune menu; do
                         mv "${tmp_dir}/${module}.sh" "${MODULES_DIR}/${module}.sh"
                     done
-                    rm -rf "${tmp_dir}" "${tmp_file}"
-                    echo "完成"
+                    rm -rf "${tmp_dir}" "${tmp_file}" "${tmp_sha}"
+                    echo "完成（sha256 校验通过）"
                     return 0
                 else
                     echo "失败（模块 ${mod_failed} 语法校验未通过）"
-                    rm -rf "${tmp_dir}" "${tmp_file}"
+                    rm -rf "${tmp_dir}" "${tmp_file}" "${tmp_sha}"
                     return 1
                 fi
             else
                 echo "解压失败"
-                rm -rf "${tmp_dir}" "${tmp_file}"
+                rm -rf "${tmp_dir}" "${tmp_file}" "${tmp_sha}"
                 return 1
             fi
         else
             echo "文件无效"
-            rm -rf "${tmp_dir}" "${tmp_file}"
+            rm -rf "${tmp_dir}" "${tmp_file}" "${tmp_sha}"
             return 1
         fi
     else
         echo "下载失败"
-        rm -rf "${tmp_dir}" "${tmp_file}"
+        rm -rf "${tmp_dir}" "${tmp_file}" "${tmp_sha}"
         return 1
     fi
 }
@@ -220,6 +244,26 @@ self_update_install() {
         return 0
     fi
 
+    # sha256 完整性校验（从 Release 下载 install.sh.sha256 并比对）
+    local tmp_sha
+    tmp_sha=$(mktemp /tmp/sb-install-sha.XXXXXX) || { rm -f "$tmp_install"; return 0; }
+    local sha_urls=($(build_download_urls "$GH_INSTALL_SHA256_URL"))
+    if multi_source_download "$tmp_sha" "${sha_urls[@]}" && [[ -s "$tmp_sha" ]]; then
+        local expected_sha actual_sha
+        expected_sha=$(awk '{print $1}' "$tmp_sha" | tr -d '[:space:]')
+        actual_sha=$(sha256sum "$tmp_install" | awk '{print $1}')
+        if [[ -z "$expected_sha" ]] || [[ "$expected_sha" != "$actual_sha" ]]; then
+            echo "[引导] install.sh 自更新 sha256 校验失败，跳过自更新"
+            rm -f "$tmp_install" "$tmp_sha"
+            return 0
+        fi
+    else
+        echo "[引导] 无法下载 install.sh.sha256，跳过自更新（安全策略）"
+        rm -f "$tmp_install" "$tmp_sha"
+        return 0
+    fi
+    rm -f "$tmp_sha"
+
     # 内容未变化则跳过（避免无意义的 exec 重新执行）
     local old_md5 new_md5
     old_md5=$(md5sum "$self_path" 2>/dev/null | awk '{print $1}')
@@ -239,8 +283,57 @@ self_update_install() {
     fi
     rm -f "${self_path}.bak"
     chmod +x "$self_path"
-    echo "[引导] install.sh 引导脚本已更新，重新执行以加载新版本..."
+    echo "[引导] install.sh 引导脚本已更新（sha256 校验通过），重新执行以加载新版本..."
     exec bash "$self_path" "$@"
+}
+
+# 模块目录已存在时执行自更新（封装为函数避免顶层 local 语法错误）
+# 用法: do_self_update
+do_self_update() {
+    local update_ok=0
+    # 优先从 Releases 下载（含 sha256 校验）
+    if download_modules_archive; then
+        update_ok=1
+    else
+        echo "[引导] Releases 下载失败，回退到逐个下载..."
+        # 原子更新：全部下载到临时目录校验通过后，才整体替换正式目录
+        # 任一模块失败则整体回滚，保留旧版本完整可用，避免新旧混合导致脚本崩溃
+        local tmp_dir
+        tmp_dir=$(mktemp -d /tmp/sb-update.XXXXXX) || { echo "[引导] 创建临时目录失败，跳过更新"; }
+        if [[ -n "$tmp_dir" ]]; then
+            local all_ok=1
+            for module in core install links dns relay protocols config tune menu; do
+                echo -n "[引导] 更新模块 ${module}.sh ... "
+                local raw_urls=($(build_download_urls "${GH_RAW_URL}/${module}.sh"))
+                local tmp_mod="${tmp_dir}/${module}.sh"
+                if multi_source_download "${tmp_mod}" "${raw_urls[@]}" \
+                   && [[ -s "${tmp_mod}" ]] \
+                   && head -1 "${tmp_mod}" | grep -qE '^#!|^#' \
+                   && bash -n "${tmp_mod}" 2>/dev/null; then
+                    echo "完成"
+                else
+                    rm -f "${tmp_mod}"
+                    echo "失败（语法校验未通过）"
+                    all_ok=0
+                    break
+                fi
+            done
+
+            if [[ $all_ok -eq 1 ]]; then
+                # 全部校验通过，原子替换
+                for module in core install links dns relay protocols config tune menu; do
+                    mv "${tmp_dir}/${module}.sh" "${MODULES_DIR}/${module}.sh"
+                done
+                rmdir "${tmp_dir}" 2>/dev/null
+                update_ok=1
+            else
+                echo "[引导] 部分模块更新失败，已整体回滚保留旧版本"
+                rm -rf "${tmp_dir}"
+            fi
+        fi
+    fi
+    # 只有模块全部更新成功，才同步更新 install.sh 并重新执行
+    [[ $update_ok -eq 1 ]] && self_update_install "$@"
 }
 
 if [[ ! -d "$MODULES_DIR" ]]; then
@@ -257,50 +350,7 @@ if [[ ! -d "$MODULES_DIR" ]]; then
 else
     # 模块目录已存在，检查是否需要更新
     if check_version_update; then
-        local update_ok=0
-        # 优先从 Releases 下载
-        if download_modules_archive; then
-            update_ok=1
-        else
-            echo "[引导] Releases 下载失败，回退到逐个下载..."
-            # 原子更新：全部下载到临时目录校验通过后，才整体替换正式目录
-            # 任一模块失败则整体回滚，保留旧版本完整可用，避免新旧混合导致脚本崩溃
-            local tmp_dir
-            tmp_dir=$(mktemp -d /tmp/sb-update.XXXXXX) || { echo "[引导] 创建临时目录失败，跳过更新"; }
-            if [[ -n "$tmp_dir" ]]; then
-                local all_ok=1
-                for module in core install links dns relay protocols config tune menu; do
-                    echo -n "[引导] 更新模块 ${module}.sh ... "
-                    local raw_urls=($(build_download_urls "${GH_RAW_URL}/${module}.sh"))
-                    local tmp_mod="${tmp_dir}/${module}.sh"
-                    if multi_source_download "${tmp_mod}" "${raw_urls[@]}" \
-                       && [[ -s "${tmp_mod}" ]] \
-                       && head -1 "${tmp_mod}" | grep -qE '^#!|^#' \
-                       && bash -n "${tmp_mod}" 2>/dev/null; then
-                        echo "完成"
-                    else
-                        rm -f "${tmp_mod}"
-                        echo "失败（语法校验未通过）"
-                        all_ok=0
-                        break
-                    fi
-                done
-
-                if [[ $all_ok -eq 1 ]]; then
-                    # 全部校验通过，原子替换
-                    for module in core install links dns relay protocols config tune menu; do
-                        mv "${tmp_dir}/${module}.sh" "${MODULES_DIR}/${module}.sh"
-                    done
-                    rmdir "${tmp_dir}" 2>/dev/null
-                    update_ok=1
-                else
-                    echo "[引导] 部分模块更新失败，已整体回滚保留旧版本"
-                    rm -rf "${tmp_dir}"
-                fi
-            fi
-        fi
-        # 只有模块全部更新成功，才同步更新 install.sh 并重新执行
-        [[ $update_ok -eq 1 ]] && self_update_install "$@"
+        do_self_update "$@"
     fi
 fi
 

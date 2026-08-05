@@ -142,8 +142,11 @@ install_singbox() {
                 return 1
             fi
         else
-            print_warning "无法下载 sha256 校验文件，跳过校验（继续执行）"
-            rm -f /tmp/sb.tar.gz.sha256
+            # sha256 校验文件不可得：中止安装，避免绕过完整性校验
+            print_error "无法下载 sha256 校验文件，拒绝安装未校验的二进制"
+            print_error "可能网络阻断 .sha256 请求或镜像不完整，请检查网络后重试"
+            rm -f /tmp/sb.tar.gz /tmp/sb.tar.gz.sha256
+            return 1
         fi
 
         # 小内存机器解压时很可能被杀，解压前确保文件完整
@@ -227,6 +230,32 @@ install_singbox() {
 
     if [[ $need_service -eq 1 ]]; then
         print_info "创建/更新服务文件..."
+
+        # 创建 sing-box 系统用户（用于服务降权运行，避免以 root 运行高攻击面进程）
+        if ! id sing-box &>/dev/null; then
+            if [[ $ALPINE -eq 1 ]]; then
+                adduser -S -H -s /sbin/nologin -D sing-box 2>/dev/null || true
+            else
+                useradd -r -s /usr/sbin/nologin -d /nonexistent sing-box 2>/dev/null || true
+            fi
+        fi
+
+        # 授予 sing-box 绑定 < 1024 端口的能力（443 等常用端口需要）
+        if command -v setcap &>/dev/null; then
+            setcap 'cap_net_bind_service=+ep' "${INSTALL_DIR}/sing-box" 2>/dev/null || \
+                print_warning "setcap 失败，sing-box 将无法绑定 443 等低端口（用 root 运行可忽略）"
+        fi
+
+        # 调整关键目录归属，让 sing-box 用户可读写
+        chown -R sing-box:sing-box /etc/sing-box 2>/dev/null || true
+        chmod 750 /etc/sing-box 2>/dev/null
+
+        # 预创建日志文件（600 防止其他用户读取连接信息）
+        mkdir -p /var/log 2>/dev/null
+        touch /var/log/sing-box.log
+        chown sing-box:sing-box /var/log/sing-box.log 2>/dev/null || true
+        chmod 600 /var/log/sing-box.log
+
         if [[ $ALPINE -eq 1 ]]; then
             cat > /etc/init.d/sing-box << 'EOF'
 #!/sbin/openrc-run
@@ -234,14 +263,19 @@ install_singbox() {
 name="sing-box"
 description="sing-box service"
 
-command="/bin/sh"
-command_args="-c 'exec /usr/local/bin/sing-box run -c /etc/sing-box/config.json >> /var/log/sing-box.log 2>&1'"
+command="/usr/local/bin/sing-box"
+command_args="run -c /etc/sing-box/config.json"
+command_user="sing-box:sing-box"
+command_background=true
 pidfile="/run/${name}.pid"
+output_log="/var/log/sing-box.log"
+error_log="/var/log/sing-box.log"
 required_files="/etc/sing-box/config.json"
 
 supervisor="supervise-daemon"
 respawn_delay=10
-respawn_max=0
+respawn_max=5
+respawn_period=60
 
 depend() {
     need net
@@ -249,25 +283,49 @@ depend() {
 }
 EOF
             chmod +x /etc/init.d/sing-box
-            print_success "OpenRC 服务已创建"
+            print_success "OpenRC 服务已创建（降权到 sing-box 用户运行）"
         else
             cat > /etc/systemd/system/sing-box.service << 'EOFSVC'
 [Unit]
 Description=sing-box service
 After=network.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
+User=sing-box
+Group=sing-box
 ExecStart=/usr/local/bin/sing-box run -c /etc/sing-box/config.json
 Restart=on-failure
 RestartSec=10s
-LimitNOFILE=infinity
+LimitNOFILE=1048576
+
+# 沙箱加固
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+SystemCallArchitectures=native
+# sing-box 需要绑定 443 等低端口（已通过 setcap 授权）
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_NET_RAW
+AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_NET_RAW
+# 仅允许写 /etc/sing-box 和日志目录
+ReadWritePaths=/etc/sing-box /var/log
 
 [Install]
 WantedBy=multi-user.target
 EOFSVC
             systemctl daemon-reload
-            print_success "systemd 服务已创建"
+            print_success "systemd 服务已创建（降权到 sing-box 用户 + 沙箱加固）"
         fi
     else
         print_success "服务文件已就绪"
@@ -285,12 +343,33 @@ EOFSVC
 gen_cert_for_sni() {
     local sni="$1"
     local node_cert_dir="${CERT_DIR}/${sni}"
-    
-    mkdir -p "${node_cert_dir}"
-    
-    openssl genrsa -out "${node_cert_dir}/private.key" 2048 2>/dev/null
-    openssl req -new -x509 -days 36500 -key "${node_cert_dir}/private.key" -out "${node_cert_dir}/cert.pem" -subj "/C=US/ST=California/L=Cupertino/O=Apple Inc./CN=${sni}" 2>/dev/null
-    
+
+    # 安全校验：sni 必须是合法域名，防止路径穿越（../.. 写到任意目录）
+    if [[ -z "$sni" ]] || [[ "$sni" == *"/"* ]] || [[ "$sni" == *".."* ]]; then
+        print_error "SNI 非法: ${sni}（含路径字符，拒绝生成证书）"
+        return 1
+    fi
+
+    if ! mkdir -p "${node_cert_dir}"; then
+        print_error "创建证书目录失败: ${node_cert_dir}（磁盘满或权限不足）"
+        return 1
+    fi
+
+    # 生成私钥（umask 077 保证 600）
+    if ! (umask 077 && openssl genrsa -out "${node_cert_dir}/private.key" 2048 2>/dev/null); then
+        print_error "生成私钥失败: ${sni}"
+        return 1
+    fi
+    if ! openssl req -new -x509 -days 36500 -key "${node_cert_dir}/private.key" -out "${node_cert_dir}/cert.pem" -subj "/C=US/ST=California/L=Cupertino/O=Apple Inc./CN=${sni}" 2>/dev/null; then
+        print_error "生成证书失败: ${sni}"
+        rm -f "${node_cert_dir}/private.key"
+        return 1
+    fi
+
+    # 强制权限：private.key 600，cert.pem 644
+    chmod 600 "${node_cert_dir}/private.key" 2>/dev/null
+    chmod 644 "${node_cert_dir}/cert.pem" 2>/dev/null
+
     print_success "证书生成完成 (${sni}, 有效期100年)"
 }
 

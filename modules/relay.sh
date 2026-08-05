@@ -2,20 +2,29 @@
 # ==================== 中转配置管理 ====================
 save_relays_to_file() {
     mkdir -p "$(dirname "${RELAY_FILE}")"
-    
+
     cat > "${RELAY_FILE}" << EOF
 # Sing-box 中转配置文件
 # 格式: TAG|DESCRIPTION|JSON_CONFIG
 EOF
-    
+
     for i in "${!RELAY_TAGS[@]}"; do
         local tag="${RELAY_TAGS[$i]}"
         local desc="${RELAY_DESCS[$i]}"
         local json="${RELAY_JSONS[$i]}"
+        # 转义 | 防止破坏 conf 文件格式（load_relays_from_file 用 IFS='|' 切分）
+        tag="${tag//|/_}"
+        desc="${desc//|/｜}"
         # 使用 base64 编码 JSON 避免换行问题
         local json_base64=$(echo "$json" | base64 -w0)
         echo "${tag}|${desc}|${json_base64}" >> "${RELAY_FILE}"
     done
+
+    # 安全权限：relays.conf 含中转服务器密码/UUID，必须 600
+    chmod 600 "${RELAY_FILE}" 2>/dev/null
+    if id sing-box &>/dev/null; then
+        chown sing-box:sing-box "${RELAY_FILE}" 2>/dev/null || true
+    fi
 }
 
 load_relays_from_file() {
@@ -331,7 +340,7 @@ parse_socks_link() {
             return 1
         fi
 
-        local tag="relay-socks5-${#RELAY_TAGS[@]}"
+        local tag=$(gen_relay_tag "socks5")
         relay_json="{
   \"type\": \"socks\",
   \"tag\": \"${tag}\",
@@ -356,7 +365,7 @@ parse_socks_link() {
             return 1
         fi
         
-        local tag="relay-socks5-${#RELAY_TAGS[@]}"
+        local tag=$(gen_relay_tag "socks5")
         relay_json="{
   \"type\": \"socks\",
   \"tag\": \"${tag}\",
@@ -390,7 +399,7 @@ parse_http_link() {
     
     local relay_json=""
     local relay_desc=""
-    local tag="relay-http-${#RELAY_TAGS[@]}"
+    local tag=$(gen_relay_tag "http")
     
     if [[ "$data" =~ @ ]]; then
         local userpass=$(echo "$data" | cut -d'@' -f1)
@@ -467,7 +476,7 @@ parse_ss_link() {
         local method=$(echo "$decoded" | cut -d':' -f1)
         local password=$(echo "$decoded" | cut -d':' -f2-)
         
-        local tag="relay-ss-${#RELAY_TAGS[@]}"
+        local tag=$(gen_relay_tag "ss")
         local relay_json="{
   \"type\": \"shadowsocks\",
   \"tag\": \"${tag}\",
@@ -522,6 +531,17 @@ parse_vmess_link() {
     local tls=$(echo "$json" | jq -r '.tls // ""')
     local sni=$(echo "$json" | jq -r '.sni // ""')
     local alpn=$(echo "$json" | jq -r '.alpn // ""')
+
+    # 端口格式校验（VMess 链接 port 可能是字符串或缺失）
+    if ! [[ "$port" =~ ^[0-9]+$ ]] || ! validate_port "$port"; then
+        print_error "VMess 链接端口无效: ${port}"
+        return 1
+    fi
+    port=$(normalize_port "$port")
+    # alterId 必须是数字（jq 返回 null 时改为 0）
+    if ! [[ "$alterId" =~ ^[0-9]+$ ]]; then
+        alterId=0
+    fi
     
     # 构建传输层配置
     local transport_config=""
@@ -578,7 +598,7 @@ parse_vmess_link() {
   }"
     fi
     
-    local tag="relay-vmess-${#RELAY_TAGS[@]}"
+    local tag=$(gen_relay_tag "vmess")
     local relay_json="{
   \"type\": \"vmess\",
   \"tag\": \"${tag}\",
@@ -719,7 +739,7 @@ parse_vless_link() {
         esac
     fi
 
-    local tag="relay-vless-${#RELAY_TAGS[@]}"
+    local tag=$(gen_relay_tag "vless")
     local relay_json="{
   \"type\": \"vless\",
   \"tag\": \"${tag}\",
@@ -828,7 +848,7 @@ parse_trojan_link() {
   }"
     fi
     
-    local tag="relay-trojan-${#RELAY_TAGS[@]}"
+    local tag=$(gen_relay_tag "trojan")
     local relay_json="{
   \"type\": \"trojan\",
   \"tag\": \"${tag}\",
@@ -921,7 +941,7 @@ parse_hysteria2_link() {
   }"
     fi
 
-    local tag="relay-hysteria2-${#RELAY_TAGS[@]}"
+    local tag=$(gen_relay_tag "hysteria2")
     local relay_json="{
   \"type\": \"hysteria2\",
   \"tag\": \"${tag}\",
@@ -1032,7 +1052,7 @@ parse_anytls_link() {
   \"padding_scheme\": [${padding}]"
     fi
 
-    local tag="relay-anytls-${#RELAY_TAGS[@]}"
+    local tag=$(gen_relay_tag "anytls")
     local relay_json="{
   \"type\": \"anytls\",
   \"tag\": \"${tag}\",

@@ -1,7 +1,7 @@
 # ==================== sing-box 链接管理模块 ====================
 # ==================== 链接文件管理 ====================
 save_links_to_files() {
-    mkdir -p "${LINK_DIR}"
+    mkdir -p "${LINK_DIR}" || { print_error "创建链接目录失败: ${LINK_DIR}"; return 1; }
 
     echo -en "${ALL_LINKS_TEXT}" > "${ALL_LINKS_FILE}"
     echo -en "${REALITY_LINKS}" > "${REALITY_LINKS_FILE}"
@@ -293,13 +293,27 @@ regenerate_anytls_link() {
             # 重新生成客户端 JSON 中的 server 字段（IPv4）
             local client_config_file_ipv4="${LINK_DIR}/anytls_reality_client_${port}.json"
             if [[ -f "${client_config_file_ipv4}" ]]; then
-                jq --arg server "${SERVER_IP}" '.outbounds[0].server = $server' "${client_config_file_ipv4}" > "${client_config_file_ipv4}.tmp" && mv "${client_config_file_ipv4}.tmp" "${client_config_file_ipv4}"
+                local _tmp="${client_config_file_ipv4}.tmp"
+                if jq --arg server "${SERVER_IP}" '.outbounds[0].server = $server' "${client_config_file_ipv4}" > "$_tmp" && [[ -s "$_tmp" ]]; then
+                    mv -f "$_tmp" "${client_config_file_ipv4}"
+                    chmod 600 "${client_config_file_ipv4}" 2>/dev/null || true
+                    if id sing-box &>/dev/null; then chown sing-box:sing-box "${client_config_file_ipv4}" 2>/dev/null || true; fi
+                else
+                    rm -f "$_tmp"
+                fi
             fi
             # 重新生成客户端 JSON 中的 server 字段（IPv6）
             if [[ -n "${SERVER_IPV6}" ]]; then
                 local client_config_file_ipv6="${LINK_DIR}/anytls_reality_client_${port}_ipv6.json"
                 if [[ -f "${client_config_file_ipv6}" ]]; then
-                    jq --arg server "${SERVER_IPV6}" '.outbounds[0].server = $server' "${client_config_file_ipv6}" > "${client_config_file_ipv6}.tmp" && mv "${client_config_file_ipv6}.tmp" "${client_config_file_ipv6}"
+                    local _tmp="${client_config_file_ipv6}.tmp"
+                    if jq --arg server "${SERVER_IPV6}" '.outbounds[0].server = $server' "${client_config_file_ipv6}" > "$_tmp" && [[ -s "$_tmp" ]]; then
+                        mv -f "$_tmp" "${client_config_file_ipv6}"
+                        chmod 600 "${client_config_file_ipv6}" 2>/dev/null || true
+                        if id sing-box &>/dev/null; then chown sing-box:sing-box "${client_config_file_ipv6}" 2>/dev/null || true; fi
+                    else
+                        rm -f "$_tmp"
+                    fi
                 fi
             fi
         else
@@ -309,7 +323,14 @@ regenerate_anytls_link() {
             # 重新生成客户端 JSON 中的 server 字段（IPv4）
             local client_config_file_ipv4="${LINK_DIR}/anytls_client_${port}.json"
             if [[ -f "${client_config_file_ipv4}" ]]; then
-                jq --arg server "${SERVER_IP}" '.outbounds[0].server = $server' "${client_config_file_ipv4}" > "${client_config_file_ipv4}.tmp" && mv "${client_config_file_ipv4}.tmp" "${client_config_file_ipv4}"
+                local _tmp="${client_config_file_ipv4}.tmp"
+                if jq --arg server "${SERVER_IP}" '.outbounds[0].server = $server' "${client_config_file_ipv4}" > "$_tmp" && [[ -s "$_tmp" ]]; then
+                    mv -f "$_tmp" "${client_config_file_ipv4}"
+                    chmod 600 "${client_config_file_ipv4}" 2>/dev/null || true
+                    if id sing-box &>/dev/null; then chown sing-box:sing-box "${client_config_file_ipv4}" 2>/dev/null || true; fi
+                else
+                    rm -f "$_tmp"
+                fi
             fi
 
             if [[ -n "${SERVER_IPV6}" ]]; then
@@ -319,7 +340,14 @@ regenerate_anytls_link() {
                 # 重新生成客户端 JSON 中的 server 字段（IPv6）
                 local client_config_file_ipv6="${LINK_DIR}/anytls_client_${port}_ipv6.json"
                 if [[ -f "${client_config_file_ipv6}" ]]; then
-                    jq --arg server "${SERVER_IPV6}" '.outbounds[0].server = $server' "${client_config_file_ipv6}" > "${client_config_file_ipv6}.tmp" && mv "${client_config_file_ipv6}.tmp" "${client_config_file_ipv6}"
+                    local _tmp="${client_config_file_ipv6}.tmp"
+                    if jq --arg server "${SERVER_IPV6}" '.outbounds[0].server = $server' "${client_config_file_ipv6}" > "$_tmp" && [[ -s "$_tmp" ]]; then
+                        mv -f "$_tmp" "${client_config_file_ipv6}"
+                        chmod 600 "${client_config_file_ipv6}" 2>/dev/null || true
+                        if id sing-box &>/dev/null; then chown sing-box:sing-box "${client_config_file_ipv6}" 2>/dev/null || true; fi
+                    else
+                        rm -f "$_tmp"
+                    fi
                 fi
             fi
         fi
@@ -544,6 +572,23 @@ generate_proto_link() {
         esac
         shift
     done
+
+    # 对所有用户输入参数做 URL 编码，防止 & = # 等特殊字符破坏 URL 结构
+    # uuid/pbk/sid 是 hex 字符串，编码后不变（安全）
+    uuid=$(url_encode "$uuid")
+    username=$(url_encode "$username")
+    password=$(url_encode "$password")
+    sni=$(url_encode "$sni")
+    pbk=$(url_encode "$pbk")
+    sid=$(url_encode "$sid")
+    obfs_password=$(url_encode "$obfs_password")
+    ss_password=$(url_encode "$ss_password")
+    shadowtls_password=$(url_encode "$shadowtls_password")
+    ws_path=$(url_encode "$ws_path")
+    ws_host=$(url_encode "$ws_host")
+    grpc_service=$(url_encode "$grpc_service")
+    # transport/fp/flow/security/insecure 是固定枚举值，不编码
+
 
     local link=""
     local proto_label=""

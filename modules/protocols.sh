@@ -173,13 +173,15 @@ setup_hysteria2() {
     local NODE_HY2_PASSWORD=$(openssl rand -hex 16)
     print_info "节点密码: ${NODE_HY2_PASSWORD}"
     
-    # 构建 obfs 配置
+    # 构建 obfs 配置（用户输入密码需 json_escape，防止破坏 JSON）
     local obfs_config=""
     if [[ "$ENABLE_OBFS" =~ ^[Yy]$ ]]; then
+        local obfs_password_escaped
+        obfs_password_escaped=$(json_escape "$OBFS_PASSWORD")
         obfs_config=",
     \"obfs\": {
       \"type\": \"salamander\",
-      \"password\": \"${OBFS_PASSWORD}\"
+      \"password\": \"${obfs_password_escaped}\"
     }"
     fi
     
@@ -263,9 +265,9 @@ setup_socks5() {
     # 每个节点使用独立凭据
     local NODE_SOCKS_USER="user_$(openssl rand -hex 4)"
     local NODE_SOCKS_PASS=$(openssl rand -hex 16)
-    
+
     local listen_addr=$(get_listen_address)
-    
+
     if [[ "$ENABLE_AUTH" =~ ^[Yy]$ ]]; then
         local inbound="{
   \"type\": \"socks\",
@@ -276,13 +278,18 @@ setup_socks5() {
 }"
         EXTRA_INFO="用户名: ${NODE_SOCKS_USER}\n密码: ${NODE_SOCKS_PASS}"
     else
+        # 安全防护：无认证 + 公网监听 = 开放代理，会被滥用发垃圾邮件/扫描
+        # 强制改为仅监听本地回环，避免变成开放代理
+        print_warning "无认证 SOCKS5 监听公网会成为开放代理，已被强制改为仅本地回环 (127.0.0.1)"
+        print_warning "如需对外提供 SOCKS5，请启用认证后重新添加"
+        listen_addr="127.0.0.1"
         local inbound="{
   \"type\": \"socks\",
   \"tag\": \"socks-in-${PORT}\",
   \"listen\": \"${listen_addr}\",
   \"listen_port\": ${PORT}
 }"
-        EXTRA_INFO="无认证"
+        EXTRA_INFO="无认证（仅本地回环 127.0.0.1）"
     fi
     
     if [[ -z "$INBOUNDS_JSON" ]]; then
@@ -406,6 +413,7 @@ setup_shadowtls() {
     
     # 生成 IPv4 客户端配置文件
     local client_config_file_ipv4="${LINK_DIR}/shadowtls_client_${PORT}_ipv4.json"
+    mkdir -p "${LINK_DIR}" || { print_error "创建 ${LINK_DIR} 失败"; return 1; }
     generate_shadowtls_client_config "${client_config_file_ipv4}" "${SERVER_IP}" "${PORT}" "${SHADOWTLS_SNI}" "${NODE_SHADOWTLS_PASSWORD}" "2022-blake3-aes-128-gcm" "${NODE_SS_PASSWORD}"
     
     # IPv6 链接（如果有）
@@ -560,9 +568,14 @@ setup_anytls() {
     fi
 
     # 询问 uTLS 指纹（可选）
-    echo -e "${YELLOW}请输入 uTLS 指纹（默认 chrome，可选: firefox, safari, ios, android）${NC}"
+    echo -e "${YELLOW}请输入 uTLS 指纹（默认 chrome，可选: chrome, firefox, safari, ios, android, edge, 360, qq, random, none）${NC}"
     read -p "指纹 [chrome]: " UTLS_FINGERPRINT
     UTLS_FINGERPRINT=${UTLS_FINGERPRINT:-chrome}
+    # 枚举校验：未识别的值会回退到 chrome，防止注入客户端 JSON heredoc
+    case "${UTLS_FINGERPRINT}" in
+        chrome|firefox|safari|ios|android|edge|360|qq|random|none) ;;
+        *) print_warning "未识别的指纹 '${UTLS_FINGERPRINT}'，回退为 chrome"; UTLS_FINGERPRINT="chrome" ;;
+    esac
 
     # 构建 padding_scheme（增强版填充方案，覆盖更多数据包，增大随机范围）
     local padding_config="[
@@ -618,6 +631,7 @@ setup_anytls() {
         # 生成客户端 JSON 配置文件（sing-box 格式）
         # 注意: TUN stack 默认使用 system，客户端可根据自身系统修改为 gvisor
         CLIENT_JSON_PATH="${LINK_DIR}/anytls_reality_client_${PORT}.json"
+        mkdir -p "${LINK_DIR}" || { print_error "创建 ${LINK_DIR} 失败"; return 1; }
         cat > "${CLIENT_JSON_PATH}" << EOF
 {
   "log": { "level": "info" },
@@ -664,7 +678,8 @@ setup_anytls() {
   }
 }
 EOF
-        chmod 644 "${CLIENT_JSON_PATH}"
+        chmod 600 "${CLIENT_JSON_PATH}"
+        if id sing-box &>/dev/null; then chown sing-box:sing-box "${CLIENT_JSON_PATH}" 2>/dev/null || true; fi
         LINK="请使用 sing-box 客户端，配置文件已保存到: ${CLIENT_JSON_PATH}"
 
         # 生成 IPv6 客户端配置文件
@@ -716,7 +731,8 @@ EOF
   }
 }
 EOF
-            chmod 644 "${client_config_file_ipv6}"
+            chmod 600 "${client_config_file_ipv6}"
+            if id sing-box &>/dev/null; then chown sing-box:sing-box "${client_config_file_ipv6}" 2>/dev/null || true; fi
         fi
     else
         # 纯 AnyTLS 入站（需要证书）
@@ -740,6 +756,7 @@ EOF
         EXTRA_INFO="密码: ${NODE_ANYTLS_PASSWORD}\n证书: 自签证书 (${ANYTLS_SNI})"
         # 生成客户端 JSON 配置文件
         CLIENT_JSON_PATH="${LINK_DIR}/anytls_client_${PORT}.json"
+        mkdir -p "${LINK_DIR}" || { print_error "创建 ${LINK_DIR} 失败"; return 1; }
         cat > "${CLIENT_JSON_PATH}" << EOF
 {
   "log": { "level": "info" },
@@ -783,7 +800,8 @@ EOF
   }
 }
 EOF
-        chmod 644 "${CLIENT_JSON_PATH}"
+        chmod 600 "${CLIENT_JSON_PATH}"
+        if id sing-box &>/dev/null; then chown sing-box:sing-box "${CLIENT_JSON_PATH}" 2>/dev/null || true; fi
         # 同时生成 anytls:// 链接（自签证书默认 insecure=true）
         LINK=$(generate_proto_link "anytls" "${SERVER_IP}" "${PORT}" "password=${NODE_ANYTLS_PASSWORD}" "sni=${ANYTLS_SNI}" "fp=${UTLS_FINGERPRINT}" "insecure=true")
         add_link "$LINK" "${PROTO}" "$EXTRA_INFO" "${SERVER_IP}" "${PORT}" "${ANYTLS_SNI}"
@@ -837,7 +855,8 @@ EOF
   }
 }
 EOF
-            chmod 644 "${client_config_file_ipv6}"
+            chmod 600 "${client_config_file_ipv6}"
+            if id sing-box &>/dev/null; then chown sing-box:sing-box "${client_config_file_ipv6}" 2>/dev/null || true; fi
         fi
     fi
 

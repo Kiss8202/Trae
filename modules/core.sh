@@ -1,6 +1,6 @@
 # ==================== sing-box 管理脚本模块 ====================
 # 模块版本号，用于检查模块是否需要更新
-MODULE_VERSION="1.20"
+MODULE_VERSION="1.21"
 
 # ==================== 颜色定义 ====================
 RED='\033[0;31m'
@@ -110,7 +110,13 @@ jq_update_config() {
     # 临时文件与目标文件同目录，保证 mv 是原子 rename（不跨文件系统）
     tmp_file=$(mktemp "${CONFIG_FILE}.XXXXXX.tmp") || { print_error "创建临时文件失败" >&2; return 1; }
     if jq "$@" "${CONFIG_FILE}" > "$tmp_file" && [[ -s "$tmp_file" ]]; then
-        mv -f "$tmp_file" "${CONFIG_FILE}"
+        # 保留原 config.json 的 600 权限
+        if ! mv -f "$tmp_file" "${CONFIG_FILE}"; then
+            rm -f "$tmp_file"
+            print_error "配置替换失败（mv 失败，可能跨文件系统或权限不足）" >&2
+            return 1
+        fi
+        chmod 600 "${CONFIG_FILE}" 2>/dev/null
         return 0
     else
         rm -f "$tmp_file"
@@ -126,7 +132,7 @@ validate_sni() {
     if [[ -z "$sni" ]]; then
         return 0  # 空值由调用方处理
     fi
-    # SNI 只允许域名格式（字母数字点连字符）
+    # SNI 只允许域名格式（字母数字点连字符），禁止 / .. 等路径字符
     if [[ ! "$sni" =~ ^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$ ]]; then
         print_error "SNI 格式无效: ${sni}（仅允许域名格式）"
         return 1
@@ -134,25 +140,118 @@ validate_sni() {
     return 0
 }
 
+# 验证端口（1-65535），强制十进制解析避免 08/09 被当八进制
+# 用法: validate_port <port>  返回 0=有效, 1=无效
+validate_port() {
+    local port="$1"
+    if [[ -z "$port" ]] || ! [[ "$port" =~ ^[0-9]+$ ]]; then
+        return 1
+    fi
+    # 强制十进制，防止 08/09 触发 "value too great for base" 错误
+    (( 10#$port >= 1 && 10#$port <= 65535 ))
+}
+
+# 规范化端口：去除前导零，强制十进制
+# 用法: normalize_port <port>  输出到 stdout
+normalize_port() {
+    local port="$1"
+    if [[ "$port" =~ ^[0-9]+$ ]]; then
+        printf '%d' "$((10#$port))"
+    else
+        printf '%s' "$port"
+    fi
+}
+
+# 校验 IPv4 各字段在 0-255 范围内
+# 用法: validate_ipv4_octets <ipv4>  返回 0=有效, 1=无效
+validate_ipv4_octets() {
+    local ip="$1"
+    local IFS='.'
+    local -a octets=($ip)
+    [[ ${#octets[@]} -ne 4 ]] && return 1
+    local o
+    for o in "${octets[@]}"; do
+        [[ "$o" =~ ^[0-9]+$ ]] || return 1
+        (( 10#$o > 255 )) && return 1
+    done
+    return 0
+}
+
+# URL 编码（RFC 3986），用于协议链接的参数值编码
+# 用法: url_encode <string>  输出到 stdout
+url_encode() {
+    local str="$1"
+    local LC_ALL=C
+    local i ch code out=""
+    local len=${#str}
+    for ((i=0; i<len; i++)); do
+        ch="${str:i:1}"
+        case "$ch" in
+            # 非保留字符直接放行
+            [a-zA-Z0-9.~_-]) out+="$ch" ;;
+            *)
+                # 其他字符按字节 %HH 编码（LC_ALL=C 强制按字节处理多字节字符）
+                printf -v code '%d' "'$ch" 2>/dev/null
+                if [[ "$code" =~ ^[0-9]+$ ]]; then
+                    printf -v code '%%%02X' "$code"
+                    out+="$code"
+                else
+                    out+="$ch"
+                fi
+                ;;
+        esac
+    done
+    printf '%s' "$out"
+}
+
+# 生成中转 tag（基于已有同类 tag 的最大序号 +1，避免删除后再添加导致重号）
+# 用法: gen_relay_tag <proto>  例如 gen_relay_tag socks5  输出 relay-socks5-N
+gen_relay_tag() {
+    local proto="$1"
+    local prefix="relay-${proto}-"
+    local max=0 cur
+    local t
+    for t in "${RELAY_TAGS[@]:-}"; do
+        if [[ "$t" == "${prefix}"* ]]; then
+            cur="${t#${prefix}}"
+            if [[ "$cur" =~ ^[0-9]+$ ]] && (( 10#$cur > 10#$max )); then
+                max=$cur
+            fi
+        fi
+    done
+    printf '%s%d' "$prefix" "$((10#$max + 1))"
+}
+
 # JSON 字符串转义（防止用户输入破坏 JSON 结构）
+# 用法: json_escape <string>
 json_escape() {
     local str="$1"
-    str="${str//\\/\\\\}"   # 反斜杠
-    str="${str//\"/\\\"}"   # 双引号
-    str="${str//$'\n'/\\n}" # 换行
-    str="${str//$'\r'/\\r}" # 回车
-    str="${str//$'\t'/\\t}" # 制表符
-    str="${str//$'\b'/\\b}" # 退格
-    str="${str//$'\f'/\\f}" # 换页
-    # 转义剩余控制字符 (0x00-0x1F)
-    local i ch code out=""
-    for ((i=0; i<${#str}; i++)); do
+    # 用 LC_ALL=C 按字节处理，避免多字节字符被 printf '%d' "'$ch" 误判
+    local LC_ALL=C
+    local out=""
+    local i ch code
+    local len=${#str}
+    for ((i=0; i<len; i++)); do
         ch="${str:i:1}"
+        # 用 ASCII 码判断，避免 case 模式中反斜杠转义歧义
         printf -v code '%d' "'$ch" 2>/dev/null
-        if [[ "$code" =~ ^[0-9]+$ ]] && (( code < 32 )); then
-            printf -v ch '\\u%04x' "$code"
-        fi
-        out+="$ch"
+        case "$code" in
+            34)  out+='\"' ;;        # "
+            92)  out+='\\' ;;         # \
+            10)  out+='\n' ;;         # 换行
+            13)  out+='\r' ;;         # 回车
+            9)   out+='\t' ;;         # 制表符
+            8)   out+='\b' ;;         # 退格
+            12)  out+='\f' ;;         # 换页
+            *)
+                if [[ "$code" =~ ^[0-9]+$ ]] && (( code < 32 )); then
+                    printf -v code '\u%04x' "$code"
+                    out+="$code"
+                else
+                    out+="$ch"
+                fi
+                ;;
+        esac
     done
     printf '%s' "$out"
 }
@@ -260,6 +359,9 @@ generate_shadowtls_client_config() {
   }
 }
 EOFCLIENT
+    # 客户端配置含 ss_password/stls_password，限制为 600 并归属 sing-box
+    chmod 600 "${output_file}" 2>/dev/null || true
+    if id sing-box &>/dev/null; then chown sing-box:sing-box "${output_file}" 2>/dev/null || true; fi
 }
 
 # ==================== 修改端口封装 ====================

@@ -143,13 +143,14 @@ dns_config_menu() {
 
 # 保存自定义 DNS 服务器到文件
 save_dns_servers_to_file() {
-    mkdir -p "$(dirname "${DNS_SERVERS_FILE}")"
+    mkdir -p "$(dirname "${DNS_SERVERS_FILE}")" || { print_error "创建 DNS 配置目录失败"; return 1; }
     cat > "${DNS_SERVERS_FILE}" << EOF
 # Sing-box 自定义 DNS 服务器
 # 格式: TAG|TYPE|SERVER|DESCRIPTION
 EOF
     for entry in "${DNS_SERVERS[@]}"; do
-        echo "$entry" >> "${DNS_SERVERS_FILE}"
+        # 转义 | 防止破坏 conf 文件格式（用户输入的 description 可能含 |）
+        echo "${entry//|/｜}" >> "${DNS_SERVERS_FILE}"
     done
 }
 
@@ -166,13 +167,14 @@ load_dns_servers_from_file() {
 
 # 保存 DNS 分流规则到文件
 save_dns_routes_to_file() {
-    mkdir -p "$(dirname "${DNS_ROUTES_FILE}")"
+    mkdir -p "$(dirname "${DNS_ROUTES_FILE}")" || { print_error "创建 DNS 分流配置目录失败"; return 1; }
     cat > "${DNS_ROUTES_FILE}" << EOF
 # Sing-box DNS 分流规则
 # 格式: MATCH_TYPE|MATCH_VALUE|DNS_TAG|DESCRIPTION
 EOF
     for entry in "${DNS_ROUTES[@]}"; do
-        echo "$entry" >> "${DNS_ROUTES_FILE}"
+        # 转义 | 防止破坏 conf 文件格式
+        echo "${entry//|/｜}" >> "${DNS_ROUTES_FILE}"
     done
 }
 
