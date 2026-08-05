@@ -6,12 +6,22 @@ DNS_SERVER_NAME="Google"
 
 save_dns_config() {
     mkdir -p "$(dirname "${DNS_CONFIG_FILE}")"
-    cat > "${DNS_CONFIG_FILE}" << EOF
+    # 原子写入：临时文件 + mv，避免写入中断损坏配置
+    local _tmp
+    _tmp=$(mktemp "${DNS_CONFIG_FILE}.XXXXXX.tmp" 2>/dev/null) || return 1
+    cat > "$_tmp" << EOF
 # Sing-box DNS 配置
 DNS_MODE="${DNS_MODE}"
 DNS_SERVER="${DNS_SERVER}"
 DNS_SERVER_NAME="${DNS_SERVER_NAME}"
 EOF
+    if [[ -s "$_tmp" ]] && mv -f "$_tmp" "${DNS_CONFIG_FILE}"; then
+        chmod 600 "${DNS_CONFIG_FILE}" 2>/dev/null
+        return 0
+    else
+        rm -f "$_tmp"
+        return 1
+    fi
 }
 
 load_dns_config() {

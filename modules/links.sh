@@ -371,13 +371,13 @@ regenerate_cdn_vless_link() {
         local link_ipv4=$(generate_proto_link "vless-ws" "${SERVER_IP}" "${port}" \
             "uuid=${uuid}" "sni=${sni}" "transport=${transport}" \
             "path=${ws_path}" "host=${ws_host}" "grpc_service=${grpc_service}")
-        add_link "$link_ipv4" "VLESS-CDN" "" "${SERVER_IP}" "${port}" "${sni}"
+        add_link "$link_ipv4" "VLESS-CDN-${transport}" "" "${SERVER_IP}" "${port}" "${sni}"
 
         if [[ -n "${SERVER_IPV6}" ]]; then
             local link_ipv6=$(generate_proto_link "vless-ws" "[${SERVER_IPV6}]" "${port}" \
                 "uuid=${uuid}" "sni=${sni}" "transport=${transport}" \
                 "path=${ws_path}" "host=${ws_host}" "grpc_service=${grpc_service}")
-            add_link "$link_ipv6" "VLESS-CDN" "" "[${SERVER_IPV6}]" "${port}" "${sni}"
+            add_link "$link_ipv6" "VLESS-CDN-${transport}" "" "[${SERVER_IPV6}]" "${port}" "${sni}"
         fi
     fi
 }
@@ -399,13 +399,13 @@ regenerate_cdn_vmess_link() {
         local link_ipv4=$(generate_proto_link "vmess-ws" "${SERVER_IP}" "${port}" \
             "uuid=${uuid}" "sni=${sni}" "transport=${transport}" \
             "path=${ws_path}" "host=${ws_host}" "grpc_service=${grpc_service}")
-        add_link "$link_ipv4" "VMess-CDN" "" "${SERVER_IP}" "${port}" "${sni}"
+        add_link "$link_ipv4" "VMess-CDN-${transport}" "" "${SERVER_IP}" "${port}" "${sni}"
 
         if [[ -n "${SERVER_IPV6}" ]]; then
             local link_ipv6=$(generate_proto_link "vmess-ws" "[${SERVER_IPV6}]" "${port}" \
                 "uuid=${uuid}" "sni=${sni}" "transport=${transport}" \
                 "path=${ws_path}" "host=${ws_host}" "grpc_service=${grpc_service}")
-            add_link "$link_ipv6" "VMess-CDN" "" "[${SERVER_IPV6}]" "${port}" "${sni}"
+            add_link "$link_ipv6" "VMess-CDN-${transport}" "" "[${SERVER_IPV6}]" "${port}" "${sni}"
         fi
     fi
 }
@@ -427,13 +427,13 @@ regenerate_cdn_trojan_link() {
         local link_ipv4=$(generate_proto_link "trojan-ws" "${SERVER_IP}" "${port}" \
             "password=${password}" "sni=${sni}" "transport=${transport}" \
             "path=${ws_path}" "host=${ws_host}" "grpc_service=${grpc_service}")
-        add_link "$link_ipv4" "Trojan-CDN" "" "${SERVER_IP}" "${port}" "${sni}"
+        add_link "$link_ipv4" "Trojan-CDN-${transport}" "" "${SERVER_IP}" "${port}" "${sni}"
 
         if [[ -n "${SERVER_IPV6}" ]]; then
             local link_ipv6=$(generate_proto_link "trojan-ws" "[${SERVER_IPV6}]" "${port}" \
                 "password=${password}" "sni=${sni}" "transport=${transport}" \
                 "path=${ws_path}" "host=${ws_host}" "grpc_service=${grpc_service}")
-            add_link "$link_ipv6" "Trojan-CDN" "" "[${SERVER_IPV6}]" "${port}" "${sni}"
+            add_link "$link_ipv6" "Trojan-CDN-${transport}" "" "[${SERVER_IPV6}]" "${port}" "${sni}"
         fi
     fi
 }
@@ -662,7 +662,7 @@ EOF
 )
             fi
             # base64 编码（URL-safe 不要求，标准 base64 即可）
-            link="vmess://$(echo -n "$vmess_json" | base64 -w0)"
+            link="vmess://$(echo -n "$vmess_json" | base64 | tr -d '\n')"
             proto_label="VMess-CDN"
             ;;
         "trojan-ws")
@@ -680,9 +680,9 @@ EOF
             ;;
         "shadowtls")
             if [[ -n "$ss_method" && -n "$ss_password" && -n "$shadowtls_password" ]]; then
-                local ss_userinfo=$(echo -n "${ss_method}:${ss_password}" | base64 -w0 | sed 's/+/-/g; s/\//_/g; s/=//g')
+                local ss_userinfo=$(echo -n "${ss_method}:${ss_password}" | base64 | tr -d '\n' | sed 's/+/-/g; s/\//_/g; s/=//g')
                 local plugin_json="{\"version\":\"3\",\"password\":\"${shadowtls_password}\",\"host\":\"${sni}\",\"port\":\"${port}\",\"address\":\"${ip}\"}"
-                local plugin_base64=$(echo -n "$plugin_json" | base64 -w0 | sed 's/+/-/g; s/\//_/g; s/=//g')
+                local plugin_base64=$(echo -n "$plugin_json" | base64 | tr -d '\n' | sed 's/+/-/g; s/\//_/g; s/=//g')
                 link="ss://${ss_userinfo}@${ip}:${port}?shadow-tls=${plugin_base64}#ShadowTLS-${ip}"
             fi
             proto_label="ShadowTLS v3"

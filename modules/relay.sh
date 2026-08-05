@@ -3,27 +3,36 @@
 save_relays_to_file() {
     mkdir -p "$(dirname "${RELAY_FILE}")"
 
-    cat > "${RELAY_FILE}" << EOF
-# Sing-box 中转配置文件
-# 格式: TAG|DESCRIPTION|JSON_CONFIG
-EOF
+    # 原子写入：先写临时文件，全部拼好后 mv 替换，避免写入中断导致 relays.conf 损坏
+    local _tmp
+    _tmp=$(mktemp "${RELAY_FILE}.XXXXXX.tmp" 2>/dev/null) || return 1
+    {
+        echo "# Sing-box 中转配置文件"
+        echo "# 格式: TAG|DESCRIPTION|JSON_CONFIG"
+        for i in "${!RELAY_TAGS[@]}"; do
+            local tag="${RELAY_TAGS[$i]}"
+            local desc="${RELAY_DESCS[$i]}"
+            local json="${RELAY_JSONS[$i]}"
+            # 转义 | 防止破坏 conf 文件格式（load_relays_from_file 用 IFS='|' 切分）
+            tag="${tag//|/_}"
+            desc="${desc//|/｜}"
+            # 使用 base64 编码 JSON 避免换行问题（base64_encode 兼容 BusyBox）
+            local json_base64
+            json_base64=$(base64_encode "$json")
+            echo "${tag}|${desc}|${json_base64}"
+        done
+    } > "$_tmp"
 
-    for i in "${!RELAY_TAGS[@]}"; do
-        local tag="${RELAY_TAGS[$i]}"
-        local desc="${RELAY_DESCS[$i]}"
-        local json="${RELAY_JSONS[$i]}"
-        # 转义 | 防止破坏 conf 文件格式（load_relays_from_file 用 IFS='|' 切分）
-        tag="${tag//|/_}"
-        desc="${desc//|/｜}"
-        # 使用 base64 编码 JSON 避免换行问题
-        local json_base64=$(echo "$json" | base64 -w0)
-        echo "${tag}|${desc}|${json_base64}" >> "${RELAY_FILE}"
-    done
-
-    # 安全权限：relays.conf 含中转服务器密码/UUID，必须 600
-    chmod 600 "${RELAY_FILE}" 2>/dev/null
-    if id sing-box &>/dev/null; then
-        chown sing-box:sing-box "${RELAY_FILE}" 2>/dev/null || true
+    # 校验临时文件非空后原子替换
+    if [[ -s "$_tmp" ]] && mv -f "$_tmp" "${RELAY_FILE}"; then
+        chmod 600 "${RELAY_FILE}" 2>/dev/null
+        if id sing-box &>/dev/null; then
+            chown sing-box:sing-box "${RELAY_FILE}" 2>/dev/null || true
+        fi
+        return 0
+    else
+        rm -f "$_tmp"
+        return 1
     fi
 }
 
@@ -331,9 +340,12 @@ parse_socks_link() {
         local username=$(echo "$userpass" | cut -d':' -f1)
         local password=$(echo "$userpass" | cut -d':' -f2-)
         local server_port=$(echo "$data" | cut -d'@' -f2)
-        local _sp=($(parse_server_port "$server_port"))
-        local server="${_sp[0]}"
-        local port="${_sp[1]}"
+        local _sp_server _sp_port _sp_str
+        _sp_str=$(parse_server_port "$server_port")
+        _sp_server="${_sp_str%%$'\n'*}"
+        _sp_port="${_sp_str##*$'\n'}"
+        local server="${_sp_server}"
+        local port="${_sp_port}"
 
         if ! [[ "$port" =~ ^[0-9]+$ ]]; then
             print_error "端口无效: ${port}"
@@ -356,9 +368,12 @@ parse_socks_link() {
             relay_desc="SOCKS5 ${server}:${port} (认证)"
         fi
     else
-        local _sp=($(parse_server_port "$data"))
-        local server="${_sp[0]}"
-        local port="${_sp[1]}"
+        local _sp_server _sp_port _sp_str
+        _sp_str=$(parse_server_port "$data")
+        _sp_server="${_sp_str%%$'\n'*}"
+        _sp_port="${_sp_str##*$'\n'}"
+        local server="${_sp_server}"
+        local port="${_sp_port}"
         
         if ! [[ "$port" =~ ^[0-9]+$ ]]; then
             print_error "端口无效: ${port}"
@@ -406,9 +421,12 @@ parse_http_link() {
         local username=$(echo "$userpass" | cut -d':' -f1)
         local password=$(echo "$userpass" | cut -d':' -f2-)
         local server_port=$(echo "$data" | cut -d'@' -f2 | cut -d'/' -f1 | cut -d'#' -f1 | cut -d'?' -f1)
-        local _sp=($(parse_server_port "$server_port"))
-        local server="${_sp[0]}"
-        local port="${_sp[1]}"
+        local _sp_server _sp_port _sp_str
+        _sp_str=$(parse_server_port "$server_port")
+        _sp_server="${_sp_str%%$'\n'*}"
+        _sp_port="${_sp_str##*$'\n'}"
+        local server="${_sp_server}"
+        local port="${_sp_port}"
         
         local esc_server=$(json_escape "$server")
         local esc_username=$(json_escape "$username")
@@ -429,9 +447,12 @@ parse_http_link() {
         fi
     else
         local server_port=$(echo "$data" | cut -d'/' -f1 | cut -d'#' -f1 | cut -d'?' -f1)
-        local _sp=($(parse_server_port "$server_port"))
-        local server="${_sp[0]}"
-        local port="${_sp[1]}"
+        local _sp_server _sp_port _sp_str
+        _sp_str=$(parse_server_port "$server_port")
+        _sp_server="${_sp_str%%$'\n'*}"
+        _sp_port="${_sp_str##*$'\n'}"
+        local server="${_sp_server}"
+        local port="${_sp_port}"
         
         relay_json="{
   \"type\": \"http\",
@@ -463,9 +484,12 @@ parse_ss_link() {
     if [[ "$data" =~ @ ]]; then
         local userinfo=$(echo "$data" | cut -d'@' -f1)
         local server_port=$(echo "$data" | cut -d'@' -f2 | cut -d'?' -f1)
-        local _sp=($(parse_server_port "$server_port"))
-        local server="${_sp[0]}"
-        local port="${_sp[1]}"
+        local _sp_server _sp_port _sp_str
+        _sp_str=$(parse_server_port "$server_port")
+        _sp_server="${_sp_str%%$'\n'*}"
+        _sp_port="${_sp_str##*$'\n'}"
+        local server="${_sp_server}"
+        local port="${_sp_port}"
         
         local decoded=$(echo "$userinfo" | base64 -d 2>/dev/null)
         if [[ -z "$decoded" ]]; then
@@ -630,9 +654,12 @@ parse_vless_link() {
     local uuid=$(echo "$data" | cut -d'@' -f1)
     local server_port_params=$(echo "$data" | cut -d'@' -f2)
     local server_port_part=$(echo "$server_port_params" | cut -d'?' -f1 | cut -d'#' -f1)
-    local _sp=($(parse_server_port "$server_port_part"))
-    local server="${_sp[0]}"
-    local port="${_sp[1]}"
+    local _sp_server _sp_port _sp_str
+    _sp_str=$(parse_server_port "$server_port_part")
+    _sp_server="${_sp_str%%$'\n'*}"
+    _sp_port="${_sp_str##*$'\n'}"
+    local server="${_sp_server}"
+    local port="${_sp_port}"
     if ! [[ "$port" =~ ^[0-9]+$ ]]; then
         print_error "端口无效: ${port}"
         return 1
@@ -774,9 +801,12 @@ parse_trojan_link() {
     local password=$(echo "$data" | cut -d'@' -f1)
     local server_port_params=$(echo "$data" | cut -d'@' -f2)
     local server_port_part=$(echo "$server_port_params" | cut -d'?' -f1 | cut -d'#' -f1)
-    local _sp=($(parse_server_port "$server_port_part"))
-    local server="${_sp[0]}"
-    local port="${_sp[1]}"
+    local _sp_server _sp_port _sp_str
+    _sp_str=$(parse_server_port "$server_port_part")
+    _sp_server="${_sp_str%%$'\n'*}"
+    _sp_port="${_sp_str##*$'\n'}"
+    local server="${_sp_server}"
+    local port="${_sp_port}"
 
     local params=$(echo "$server_port_params" | grep -o '?.*' | sed 's|?||' | cut -d'#' -f1)
     
@@ -882,9 +912,12 @@ parse_hysteria2_link() {
     local rest="${data#*@}"
     # 提取服务器和端口
     local server_port_part=$(echo "$rest" | cut -d'?' -f1 | cut -d'#' -f1 | sed 's|/$||')
-    local _sp=($(parse_server_port "$server_port_part"))
-    local server="${_sp[0]}"
-    local port="${_sp[1]}"
+    local _sp_server _sp_port _sp_str
+    _sp_str=$(parse_server_port "$server_port_part")
+    _sp_server="${_sp_str%%$'\n'*}"
+    _sp_port="${_sp_str##*$'\n'}"
+    local server="${_sp_server}"
+    local port="${_sp_port}"
     if ! [[ "$port" =~ ^[0-9]+$ ]]; then
         print_error "端口无效: ${port}"
         return 1
@@ -973,9 +1006,12 @@ parse_anytls_link() {
     local userinfo=$(echo "$data" | cut -d'@' -f1)
     local server_port_params=$(echo "$data" | cut -d'@' -f2)
     local server_port_part=$(echo "$server_port_params" | cut -d'?' -f1 | cut -d'#' -f1)
-    local _sp=($(parse_server_port "$server_port_part"))
-    local server="${_sp[0]}"
-    local port="${_sp[1]}"
+    local _sp_server _sp_port _sp_str
+    _sp_str=$(parse_server_port "$server_port_part")
+    _sp_server="${_sp_str%%$'\n'*}"
+    _sp_port="${_sp_str##*$'\n'}"
+    local server="${_sp_server}"
+    local port="${_sp_port}"
     if ! [[ "$port" =~ ^[0-9]+$ ]]; then
         print_error "端口无效: ${port}"
         return 1

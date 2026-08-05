@@ -411,14 +411,22 @@ gen_keys() {
 
 save_keys_to_file() {
     mkdir -p "$(dirname "${KEY_FILE}")"
-    
-    cat > "${KEY_FILE}" << EOF
+    # 原子写入：临时文件 + mv，避免写入中断损坏密钥文件
+    local _tmp
+    _tmp=$(mktemp "${KEY_FILE}.XXXXXX.tmp" 2>/dev/null) || { print_error "保存密钥失败（创建临时文件失败）"; return 1; }
+    cat > "$_tmp" << EOF
 REALITY_PRIVATE="${REALITY_PRIVATE}"
 REALITY_PUBLIC="${REALITY_PUBLIC}"
 SHORT_ID="${SHORT_ID}"
 EOF
-    
-    chmod 600 "${KEY_FILE}"
-    print_success "密钥已保存到 ${KEY_FILE}"
+    if [[ -s "$_tmp" ]] && mv -f "$_tmp" "${KEY_FILE}"; then
+        chmod 600 "${KEY_FILE}"
+        print_success "密钥已保存到 ${KEY_FILE}"
+        return 0
+    else
+        rm -f "$_tmp"
+        print_error "保存密钥失败（写入失败）"
+        return 1
+    fi
 }
 

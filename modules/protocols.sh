@@ -382,12 +382,13 @@ setup_shadowtls() {
   \"type\": \"shadowsocks\",
   \"tag\": \"shadowsocks-in-${PORT}\",
   \"listen\": \"127.0.0.1\",
+  \"listen_port\": ${PORT},
   \"network\": \"tcp\",
   \"method\": \"2022-blake3-aes-128-gcm\",
   \"password\": \"${NODE_SS_PASSWORD}\"
 }"
     
-    local ss_userinfo=$(echo -n "2022-blake3-aes-128-gcm:${NODE_SS_PASSWORD}" | base64 -w0 | sed 's/+/-/g; s/\//_/g; s/=//g')
+    local ss_userinfo=$(echo -n "2022-blake3-aes-128-gcm:${NODE_SS_PASSWORD}" | base64 | tr -d '\n' | sed 's/+/-/g; s/\//_/g; s/=//g')
     
     if [[ -z "$INBOUNDS_JSON" ]]; then
         INBOUNDS_JSON="$inbound"
@@ -403,7 +404,7 @@ setup_shadowtls() {
     
     # IPv4 链接
     local plugin_json_ipv4="{\"version\":\"3\",\"password\":\"${NODE_SHADOWTLS_PASSWORD}\",\"host\":\"${SHADOWTLS_SNI}\",\"port\":\"${PORT}\",\"address\":\"${SERVER_IP}\"}"
-    local plugin_base64_ipv4=$(echo -n "$plugin_json_ipv4" | base64 -w0 | sed 's/+/-/g; s/\//_/g; s/=//g')
+    local plugin_base64_ipv4=$(echo -n "$plugin_json_ipv4" | base64 | tr -d '\n' | sed 's/+/-/g; s/\//_/g; s/=//g')
     local link_ipv4="ss://${ss_userinfo}@${SERVER_IP}:${PORT}?shadow-tls=${plugin_base64_ipv4}#ShadowTLS-${SERVER_IP}"
     add_link "$link_ipv4" "ShadowTLS v3" "$EXTRA_INFO" "${SERVER_IP}" "${PORT}" "${SHADOWTLS_SNI}"
     LINK="$link_ipv4"  # 默认链接
@@ -419,7 +420,7 @@ setup_shadowtls() {
     # IPv6 链接（如果有）
     if [[ -n "${SERVER_IPV6}" ]]; then
         local plugin_json_ipv6="{\"version\":\"3\",\"password\":\"${NODE_SHADOWTLS_PASSWORD}\",\"host\":\"${SHADOWTLS_SNI}\",\"port\":\"${PORT}\",\"address\":\"${SERVER_IPV6}\"}"
-        local plugin_base64_ipv6=$(echo -n "$plugin_json_ipv6" | base64 -w0 | sed 's/+/-/g; s/\//_/g; s/=//g')
+        local plugin_base64_ipv6=$(echo -n "$plugin_json_ipv6" | base64 | tr -d '\n' | sed 's/+/-/g; s/\//_/g; s/=//g')
         local link_ipv6="ss://${ss_userinfo}@[${SERVER_IPV6}]:${PORT}?shadow-tls=${plugin_base64_ipv6}#ShadowTLS-[${SERVER_IPV6}]"
         add_link "$link_ipv6" "ShadowTLS v3" "$EXTRA_INFO" "[${SERVER_IPV6}]" "${PORT}" "${SHADOWTLS_SNI}"
         CURRENT_NEW_LINKS="${CURRENT_NEW_LINKS}[ShadowTLS v3] [${SERVER_IPV6}]:${PORT} (SNI: ${SHADOWTLS_SNI})\n${link_ipv6}\n----------------------------------------\n\n"

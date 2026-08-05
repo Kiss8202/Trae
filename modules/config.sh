@@ -186,7 +186,11 @@ _modify_port_common() {
     if check_port_in_use "$new_port" && [[ "$new_port" != "$port" ]]; then
         print_warning "端口 ${new_port} 已被占用" >&2; return 1
     fi
-    local new_tag=$(modify_port "$tag" "$tag_prefix" "$new_port")
+    local new_tag
+    if ! new_tag=$(modify_port "$tag" "$tag_prefix" "$new_port"); then
+        print_error "端口修改失败，配置文件未更新" >&2
+        return 1
+    fi
     INBOUND_TAGS[$array_idx]="$new_tag"
     INBOUND_PORTS[$array_idx]="$new_port"
     print_success "端口已修改为 ${new_port}" >&2
@@ -1297,11 +1301,19 @@ start_svc() {
         print_warning "错误详情:"
         echo "$check_output"
         echo ""
-        # 自动回滚到备份配置
+        # 自动回滚到备份配置（原子 mv 替换，避免回滚中断留下半写文件）
         if [[ -f "${CONFIG_FILE}.bak" ]]; then
             print_warning "正在自动回滚到备份配置..."
-            cp "${CONFIG_FILE}.bak" "${CONFIG_FILE}"
-            print_success "已回滚到备份配置"
+            local _rb_tmp
+            _rb_tmp=$(mktemp "${CONFIG_FILE}.rb.XXXXXX.tmp") 2>/dev/null
+            if [[ -n "$_rb_tmp" ]] && cp "${CONFIG_FILE}.bak" "$_rb_tmp" && mv -f "$_rb_tmp" "${CONFIG_FILE}"; then
+                chmod 600 "${CONFIG_FILE}" 2>/dev/null
+                print_success "已回滚到备份配置"
+            else
+                rm -f "$_rb_tmp"
+                print_error "回滚失败，请手动检查 ${CONFIG_FILE}"
+                return 1
+            fi
             # 尝试用备份配置重启
             if "${INSTALL_DIR}/sing-box" check -c "${CONFIG_FILE}" >/dev/null 2>&1; then
                 print_info "使用备份配置重启服务..."

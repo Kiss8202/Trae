@@ -1,6 +1,6 @@
 # ==================== sing-box 管理脚本模块 ====================
 # 模块版本号，用于检查模块是否需要更新
-MODULE_VERSION="1.21"
+MODULE_VERSION="1.22"
 
 # ==================== 颜色定义 ====================
 RED='\033[0;31m'
@@ -204,6 +204,45 @@ url_encode() {
     printf '%s' "$out"
 }
 
+# base64 编码（单行，无换行）
+# 兼容 GNU base64（需 -w0）和 BusyBox base64（不支持 -w，默认可能换行）
+# 用法: base64_encode <string>  输出到 stdout（无尾换行）
+base64_encode() {
+    # BusyBox base64 不支持 -w 选项，会报错并输出用法；用 tr -d '\n' 兜底去换行
+    # 先尝试 -w0（GNU），失败则回退普通 base64 + tr
+    local out
+    out=$(printf '%s' "$1" | base64 -w0 2>/dev/null) || \
+        out=$(printf '%s' "$1" | base64 2>/dev/null)
+    # 双保险：去除所有换行（GNU -w0 已无换行，BusyBox 可能按 76 列折行）
+    printf '%s' "$out" | tr -d '\n'
+}
+
+# 原子写入文件：先写临时文件（同目录保证 mv 原子），校验非空后 mv 替换，再设权限
+# 用法: atomic_write_file <target_file> <mode> <content...>
+#   content 从 stdin 读取（便于 here-doc 传入），失败时返回非 0 且不破坏原文件
+atomic_write_file() {
+    local target="$1"
+    local mode="${2:-600}"
+    local dir
+    dir=$(dirname "$target")
+    [[ -d "$dir" ]] || mkdir -p "$dir" 2>/dev/null
+    local tmp
+    tmp=$(mktemp "${target}.XXXXXX.tmp" 2>/dev/null) || return 1
+    # 内容从 stdin 写入临时文件
+    if ! cat > "$tmp"; then
+        rm -f "$tmp"
+        return 1
+    fi
+    # 校验非空（防止管道错误导致空文件覆盖）
+    [[ -s "$tmp" ]] || { rm -f "$tmp"; return 1; }
+    if ! mv -f "$tmp" "$target"; then
+        rm -f "$tmp"
+        return 1
+    fi
+    chmod "$mode" "$target" 2>/dev/null
+    return 0
+}
+
 # 生成中转 tag（基于已有同类 tag 的最大序号 +1，避免删除后再添加导致重号）
 # 用法: gen_relay_tag <proto>  例如 gen_relay_tag socks5  输出 relay-socks5-N
 gen_relay_tag() {
@@ -373,12 +412,19 @@ modify_port() {
     local new_port="$3"
     local new_tag="${new_tag_prefix}${new_port}"
 
-    jq_update_config --arg old_tag "$old_tag" --arg new_tag "$new_tag" --argjson new_port "$new_port" \
-        '(.inbounds[] | select(.tag == $old_tag)) |= (.tag = $new_tag | .listen_port = $new_port)'
+    # 检查 jq_update_config 返回值：写失败时立即返回，避免内存状态与文件不一致
+    if ! jq_update_config --arg old_tag "$old_tag" --arg new_tag "$new_tag" --argjson new_port "$new_port" \
+        '(.inbounds[] | select(.tag == $old_tag)) |= (.tag = $new_tag | .listen_port = $new_port)'; then
+        print_error "修改端口失败：inbound 更新失败" >&2
+        return 1
+    fi
 
     if jq -e '.route.rules' "${CONFIG_FILE}" >/dev/null 2>&1; then
-        jq_update_config --arg old_tag "$old_tag" --arg new_tag "$new_tag" \
-            '(.route.rules[] | select(.inbound[]? == $old_tag)) |= (.inbound = [.inbound[] | if . == $old_tag then $new_tag else . end])'
+        if ! jq_update_config --arg old_tag "$old_tag" --arg new_tag "$new_tag" \
+            '(.route.rules[] | select(.inbound[]? == $old_tag)) |= (.inbound = [.inbound[] | if . == $old_tag then $new_tag else . end])'; then
+            print_error "修改端口失败：route rules 更新失败" >&2
+            return 1
+        fi
     fi
 
     echo "$new_tag"
@@ -514,6 +560,11 @@ detect_singbox_version() {
     if [[ -z "$version" || "$version" == "0.0.0" ]]; then
         return 0
     fi
+
+    # 清洗预发布后缀（如 1.14.0-beta.1 → 1.14.0），防止 minor/patch 含字母导致 10# 报错
+    version="${version%%-*}"
+    # 去除补丁段可能残留的元数据（如 1.14.0+abcd）
+    version="${version%%+*}"
 
     local major minor patch
     IFS='.' read -r major minor patch <<< "$version"
