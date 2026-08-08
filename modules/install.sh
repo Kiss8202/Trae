@@ -126,28 +126,31 @@ install_singbox() {
             fi
         fi
 
-        # 下载并校验 sha256（失败不强制阻断，因为部分镜像可能不支持 .sha256 文件下载）
+        # 完整性校验：优先用 GitHub Release 的 .sha256 附件做严格校验
+        # 注意：sing-box 多数版本不发布 .sha256 附件（HTTP 404 "Not Found"），
+        # 此时降级到下方的"tar 解压验证 + 二进制可执行验证"兜底链，
+        # 仍能拦截 HTML 错误页 / 损坏文件 / 非 sing-box 文件
         local sha256_url="https://github.com/SagerNet/sing-box/releases/download/v${LATEST}/sing-box-${LATEST}-linux-${ARCH}.tar.gz.sha256"
-        if curl -sf --connect-timeout 10 --max-time 30 -o /tmp/sb.tar.gz.sha256 "$sha256_url" 2>/dev/null && [[ -s /tmp/sb.tar.gz.sha256 ]]; then
+        if curl -sLf --connect-timeout 10 --max-time 30 -o /tmp/sb.tar.gz.sha256 "$sha256_url" 2>/dev/null \
+           && [[ -s /tmp/sb.tar.gz.sha256 ]] \
+           && ! grep -qi '^Not Found' /tmp/sb.tar.gz.sha256 2>/dev/null; then
             local expected_hash
             expected_hash=$(awk '{print $1}' /tmp/sb.tar.gz.sha256)
             local actual_hash
             actual_hash=$(sha256sum /tmp/sb.tar.gz | awk '{print $1}')
             if [[ -n "$expected_hash" && "$expected_hash" == "$actual_hash" ]]; then
                 print_success "sha256 校验通过"
-                rm -f /tmp/sb.tar.gz.sha256
             else
                 print_error "sha256 校验失败（期望: ${expected_hash}, 实际: ${actual_hash}）"
                 rm -f /tmp/sb.tar.gz.sha256
                 return 1
             fi
         else
-            # sha256 校验文件不可得：中止安装，避免绕过完整性校验
-            print_error "无法下载 sha256 校验文件，拒绝安装未校验的二进制"
-            print_error "可能网络阻断 .sha256 请求或镜像不完整，请检查网络后重试"
-            rm -f /tmp/sb.tar.gz /tmp/sb.tar.gz.sha256
-            return 1
+            # .sha256 附件不可得（sing-box release 通常不提供）：降级到完整性兜底验证
+            # 兜底链：file/tar 类型检查（已做）→ tar 解压（下方）→ sing-box version 可执行（下方）
+            print_warning "未获取到 .sha256 校验文件，将使用完整性兜底验证（tar 解压 + 二进制可执行校验）"
         fi
+        rm -f /tmp/sb.tar.gz.sha256
 
         # 小内存机器解压时很可能被杀，解压前确保文件完整
         print_info "解压 sing-box ..."
