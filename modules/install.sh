@@ -237,12 +237,26 @@ install_singbox() {
     if [[ $need_service -eq 1 ]]; then
         print_info "创建/更新服务文件..."
 
-        # 创建 sing-box 系统用户（用于服务降权运行，避免以 root 运行高攻击面进程）
+        # 创建 sing-box 系统用户和组（用于服务降权运行，避免以 root 运行高攻击面进程）
+        # Alpine: BusyBox adduser -S 不创建同名组，须显式 addgroup
         if ! id sing-box &>/dev/null; then
             if [[ $ALPINE -eq 1 ]]; then
-                adduser -S -H -s /sbin/nologin -D sing-box 2>/dev/null || true
+                # 先创建组（不存在时），再创建用户并加入该组
+                if ! getent group sing-box &>/dev/null; then
+                    addgroup -S sing-box 2>/dev/null || addgroup sing-box 2>/dev/null || true
+                fi
+                adduser -S -H -s /sbin/nologin -G sing-box -D sing-box 2>/dev/null || true
             else
+                # useradd -r 默认创建同名组
                 useradd -r -s /usr/sbin/nologin -d /nonexistent sing-box 2>/dev/null || true
+            fi
+        fi
+        # 兜底：确保同名组存在（用户已存在但组缺失的修复场景）
+        if ! getent group sing-box &>/dev/null; then
+            if [[ $ALPINE -eq 1 ]]; then
+                addgroup -S sing-box 2>/dev/null || addgroup sing-box 2>/dev/null || true
+            else
+                groupadd -r sing-box 2>/dev/null || true
             fi
         fi
 
