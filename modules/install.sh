@@ -14,14 +14,15 @@ install_singbox() {
     if [[ ${#missing_deps[@]} -gt 0 ]]; then
         print_info "缺少依赖: ${missing_deps[*]}，开始安装..."
         if [[ $ALPINE -eq 1 ]]; then
-            for pkg in curl wget jq openssl util-linux coreutils iproute2 gcompat; do
+            # libcap 提供 setcap，降权运行 sing-box 绑定 443 等低端口必须
+            for pkg in curl wget jq openssl util-linux coreutils iproute2 gcompat libcap; do
                 if ! apk add --no-cache "$pkg" >/dev/null 2>&1; then
                     print_warning "包 ${pkg} 安装失败，继续尝试其他包..."
                 fi
                 sleep 0.5
             done
         else
-            apt-get update -qq && apt-get install -y curl wget jq openssl uuid-runtime >/dev/null 2>&1
+            apt-get update -qq && apt-get install -y curl wget jq openssl uuid-runtime libcap2-bin >/dev/null 2>&1
         fi
 
         # 验证关键依赖是否安装成功
@@ -220,13 +221,15 @@ install_singbox() {
         if [[ ! -f /etc/init.d/sing-box ]]; then
             need_service=1
         else
-            # 如果服务文件不含预期的日志重定向命令，则重写
-            if ! grep -q "/var/log/sing-box.log" /etc/init.d/sing-box; then
+            # 服务文件必须同时包含日志重定向和降权运行标志，否则重写
+            if ! grep -q "/var/log/sing-box.log" /etc/init.d/sing-box \
+               || ! grep -q 'command_user' /etc/init.d/sing-box; then
                 need_service=1
             fi
         fi
     else
-        if [[ ! -f /etc/systemd/system/sing-box.service ]]; then
+        if [[ ! -f /etc/systemd/system/sing-box.service ]] \
+           || ! grep -q 'User=sing-box' /etc/systemd/system/sing-box.service; then
             need_service=1
         fi
     fi
@@ -243,10 +246,19 @@ install_singbox() {
             fi
         fi
 
-        # 授予 sing-box 绑定 < 1024 端口的能力（443 等常用端口需要）
+        # 授予 sing-box 绑定 < 1024 端口的能力（降权运行绑定 443 必须有此 capability）
+        # libcap 提供 setcap 命令，上面已安装；此处再兜底确保
+        if [[ $ALPINE -eq 1 ]] && ! command -v setcap &>/dev/null; then
+            apk add --no-cache libcap >/dev/null 2>&1 || true
+        fi
         if command -v setcap &>/dev/null; then
-            setcap 'cap_net_bind_service=+ep' "${INSTALL_DIR}/sing-box" 2>/dev/null || \
-                print_warning "setcap 失败，sing-box 将无法绑定 443 等低端口（用 root 运行可忽略）"
+            if ! setcap 'cap_net_bind_service=+ep' "${INSTALL_DIR}/sing-box" 2>/dev/null; then
+                print_warning "setcap 失败，降权后 sing-box 将无法绑定 443 等低端口"
+                print_warning "请手动安装 libcap 后执行: setcap 'cap_net_bind_service=+ep' ${INSTALL_DIR}/sing-box"
+            fi
+        else
+            print_warning "未找到 setcap 命令，降权后 sing-box 可能无法绑定 443 等低端口"
+            print_warning "请安装 libcap: apk add libcap (Alpine) 或 apt install libcap2-bin (Debian)"
         fi
 
         # 调整关键目录归属，让 sing-box 用户可读写
@@ -269,7 +281,6 @@ description="sing-box service"
 command="/usr/local/bin/sing-box"
 command_args="run -c /etc/sing-box/config.json"
 command_user="sing-box:sing-box"
-command_background=true
 pidfile="/run/${name}.pid"
 output_log="/var/log/sing-box.log"
 error_log="/var/log/sing-box.log"
