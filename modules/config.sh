@@ -756,11 +756,7 @@ delete_single_node() {
             print_success "服务已重启"
         else
             print_error "服务重启失败"
-            if [[ $ALPINE -eq 1 ]]; then
-                tail -n 10 /var/log/messages | grep sing-box || cat /var/log/sing-box.log 2>/dev/null
-            else
-                journalctl -u sing-box -n 10 --no-pager
-            fi
+            show_svc_log 15
         fi
     else
         print_error "无法删除节点：配置文件不存在或 jq 未安装"
@@ -1345,11 +1341,7 @@ start_svc() {
         rm -f "${CONFIG_FILE}.bak" 2>/dev/null
     else
         print_error "服务启动失败，查看日志："
-        if [[ $ALPINE -eq 1 ]]; then
-            tail -n 10 /var/log/messages | grep sing-box || cat /var/log/sing-box.log 2>/dev/null
-        else
-            journalctl -u sing-box -n 10 --no-pager
-        fi
+        show_svc_log 15
         return 1
     fi
 }

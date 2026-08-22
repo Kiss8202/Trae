@@ -1,6 +1,6 @@
 # ==================== sing-box 管理脚本模块 ====================
 # 模块版本号，用于检查模块是否需要更新
-MODULE_VERSION="1.23"
+MODULE_VERSION="1.24"
 
 # ==================== 颜色定义 ====================
 RED='\033[0;31m'
@@ -610,6 +610,33 @@ svc_restart() {
         rc-service sing-box restart 2>/dev/null
     else
         systemctl restart sing-box
+    fi
+}
+
+# 输出最近的服务日志用于排错
+# Alpine: OpenRC 服务文件已配置 output_log=/var/log/sing-box.log，优先读它；
+#         /var/log/messages 仅在装了 syslog 时才有，作为回退。
+# systemd: journalctl -u sing-box
+show_svc_log() {
+    local n="${1:-15}"
+    if [[ $ALPINE -eq 1 ]]; then
+        # 优先读服务文件配置的日志（一定存在），再回退 syslog messages
+        if [[ -f /var/log/sing-box.log ]]; then
+            tail -n "$n" /var/log/sing-box.log 2>/dev/null
+        elif [[ -f /var/log/messages ]]; then
+            grep sing-box /var/log/messages 2>/dev/null | tail -n "$n"
+        else
+            echo "(无可用日志：未找到 /var/log/sing-box.log 或 /var/log/messages)"
+        fi
+    else
+        if command -v journalctl &>/dev/null; then
+            journalctl -u sing-box -n "$n" --no-pager 2>/dev/null \
+                || echo "(journalctl 读取失败)"
+        elif [[ -f /var/log/sing-box.log ]]; then
+            tail -n "$n" /var/log/sing-box.log 2>/dev/null
+        else
+            echo "(无可用日志)"
+        fi
     fi
 }
 
