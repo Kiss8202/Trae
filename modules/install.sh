@@ -60,6 +60,9 @@ install_singbox() {
     # ---------- 3. 下载、解压、安装二进制（如需要） ----------
     if [[ $need_download -eq 1 ]]; then
         local LATEST=""
+        # sha256 校验值：来自 GitHub Release API 的 asset.digest 字段
+        # （GitHub Release 不发布独立 .sha256 文件附件，但 API 元数据含 digest）
+        local EXPECTED_SHA256=""
         local retry=0
         local max_retries=3
         while [[ $retry -lt $max_retries ]]; do
@@ -67,6 +70,9 @@ install_singbox() {
             api_response=$(curl -sf --connect-timeout 10 --max-time 30 "https://api.github.com/repos/SagerNet/sing-box/releases/latest" 2>/dev/null)
             if [[ -n "$api_response" ]]; then
                 LATEST=$(echo "$api_response" | jq -r '.tag_name' 2>/dev/null | sed 's/v//')
+                # 从 assets 提取对应架构的 sha256 digest（格式 "sha256:xxxx"，去掉前缀）
+                EXPECTED_SHA256=$(echo "$api_response" | jq -r --arg name "sing-box-${LATEST}-linux-${ARCH}.tar.gz" \
+                    '.assets[] | select(.name == $name) | .digest' 2>/dev/null | sed 's/^sha256://I' | tr -d '[:space:]')
             fi
             [[ -n "$LATEST" ]] && break
             ((retry++))
@@ -77,6 +83,13 @@ install_singbox() {
             LATEST="1.13.12"
             print_warning "无法获取最新版本（网络问题或被墙），回退到已知稳定版本 ${LATEST}"
             print_warning "建议检查网络连接或设置 GH_MIRROR 环境变量"
+            # 尝试获取 fallback 版本的 digest
+            local fb_api
+            fb_api=$(curl -sf --connect-timeout 10 --max-time 30 "https://api.github.com/repos/SagerNet/sing-box/releases/tags/v${LATEST}" 2>/dev/null)
+            if [[ -n "$fb_api" ]]; then
+                EXPECTED_SHA256=$(echo "$fb_api" | jq -r --arg name "sing-box-${LATEST}-linux-${ARCH}.tar.gz" \
+                    '.assets[] | select(.name == $name) | .digest' 2>/dev/null | sed 's/^sha256//I' | tr -d '[:space:]')
+            fi
         fi
         print_info "目标版本: ${LATEST}"
 
@@ -100,6 +113,13 @@ install_singbox() {
                 # 回退到已知稳定版本
                 LATEST="1.13.12"
                 download_url="https://github.com/SagerNet/sing-box/releases/download/v${LATEST}/sing-box-${LATEST}-linux-${ARCH}.tar.gz"
+                EXPECTED_SHA256=""  # 重置，下方重新获取
+                local fb_api2
+                fb_api2=$(curl -sf --connect-timeout 10 --max-time 30 "https://api.github.com/repos/SagerNet/sing-box/releases/tags/v${LATEST}" 2>/dev/null)
+                if [[ -n "$fb_api2" ]]; then
+                    EXPECTED_SHA256=$(echo "$fb_api2" | jq -r --arg name "sing-box-${LATEST}-linux-${ARCH}.tar.gz" \
+                        '.assets[] | select(.name == $name) | .digest' 2>/dev/null | sed 's/^sha256//I' | tr -d '[:space:]')
+                fi
                 print_info "回退下载 sing-box (${LATEST} linux-${ARCH}) ..."
                 if ! wget -q --show-progress -O /tmp/sb.tar.gz "$download_url" 2>&1 || [[ ! -f /tmp/sb.tar.gz ]] || [[ ! -s /tmp/sb.tar.gz ]]; then
                     print_error "下载失败，请检查网络后重新运行脚本"
@@ -119,6 +139,13 @@ install_singbox() {
                 rm -f /tmp/sb.tar.gz
                 LATEST="1.13.12"
                 download_url="https://github.com/SagerNet/sing-box/releases/download/v${LATEST}/sing-box-${LATEST}-linux-${ARCH}.tar.gz"
+                EXPECTED_SHA256=""
+                local fb_api3
+                fb_api3=$(curl -sf --connect-timeout 10 --max-time 30 "https://api.github.com/repos/SagerNet/sing-box/releases/tags/v${LATEST}" 2>/dev/null)
+                if [[ -n "$fb_api3" ]]; then
+                    EXPECTED_SHA256=$(echo "$fb_api3" | jq -r --arg name "sing-box-${LATEST}-linux-${ARCH}.tar.gz" \
+                        '.assets[] | select(.name == $name) | .digest' 2>/dev/null | sed 's/^sha256//I' | tr -d '[:space:]')
+                fi
                 print_info "回退下载 sing-box (${LATEST} linux-${ARCH}) ..."
                 if ! wget -q --show-progress -O /tmp/sb.tar.gz "$download_url" 2>&1 || [[ ! -f /tmp/sb.tar.gz ]] || [[ ! -s /tmp/sb.tar.gz ]]; then
                     print_error "下载失败，请检查网络后重新运行脚本"
@@ -127,31 +154,23 @@ install_singbox() {
             fi
         fi
 
-        # 完整性校验：优先用 GitHub Release 的 .sha256 附件做严格校验
-        # 注意：sing-box 多数版本不发布 .sha256 附件（HTTP 404 "Not Found"），
-        # 此时降级到下方的"tar 解压验证 + 二进制可执行验证"兜底链，
-        # 仍能拦截 HTML 错误页 / 损坏文件 / 非 sing-box 文件
-        local sha256_url="https://github.com/SagerNet/sing-box/releases/download/v${LATEST}/sing-box-${LATEST}-linux-${ARCH}.tar.gz.sha256"
-        if curl -sLf --connect-timeout 10 --max-time 30 -o /tmp/sb.tar.gz.sha256 "$sha256_url" 2>/dev/null \
-           && [[ -s /tmp/sb.tar.gz.sha256 ]] \
-           && ! grep -qi '^Not Found' /tmp/sb.tar.gz.sha256 2>/dev/null; then
-            local expected_hash
-            expected_hash=$(awk '{print $1}' /tmp/sb.tar.gz.sha256)
+        # 完整性校验：用 GitHub Release API 返回的 asset.digest 做严格 sha256 校验
+        # （GitHub Release 不发布独立 .sha256 文件，但 API 元数据的 digest 字段就是官方 sha256）
+        if [[ -n "$EXPECTED_SHA256" ]]; then
             local actual_hash
             actual_hash=$(sha256sum /tmp/sb.tar.gz | awk '{print $1}')
-            if [[ -n "$expected_hash" && "$expected_hash" == "$actual_hash" ]]; then
-                print_success "sha256 校验通过"
+            if [[ "$EXPECTED_SHA256" == "$actual_hash" ]]; then
+                print_success "sha256 校验通过（来自 GitHub Release API）"
             else
-                print_error "sha256 校验失败（期望: ${expected_hash}, 实际: ${actual_hash}）"
-                rm -f /tmp/sb.tar.gz.sha256
+                print_error "sha256 校验失败（期望: ${EXPECTED_SHA256}, 实际: ${actual_hash}）"
+                rm -f /tmp/sb.tar.gz
                 return 1
             fi
         else
-            # .sha256 附件不可得（sing-box release 通常不提供）：降级到完整性兜底验证
+            # digest 不可得（API 限流或旧版本无 digest）：降级到完整性兜底验证
             # 兜底链：file/tar 类型检查（已做）→ tar 解压（下方）→ sing-box version 可执行（下方）
-            print_warning "未获取到 .sha256 校验文件，将使用完整性兜底验证（tar 解压 + 二进制可执行校验）"
+            print_warning "未获取到 sha256 校验值（API 限流），将使用完整性兜底验证（tar 解压 + 二进制可执行校验）"
         fi
-        rm -f /tmp/sb.tar.gz.sha256
 
         # 小内存机器解压时很可能被杀，解压前确保文件完整
         print_info "解压 sing-box ..."
@@ -342,6 +361,9 @@ ExecStart=/usr/local/bin/sing-box run -c /etc/sing-box/config.json
 Restart=on-failure
 RestartSec=10s
 LimitNOFILE=1048576
+# systemd 自动管理 /run/sing-box（创建+属主+权限，重启后自动重建）
+RuntimeDirectory=sing-box
+RuntimeDirectoryMode=0750
 
 # 沙箱加固
 NoNewPrivileges=true
@@ -360,7 +382,7 @@ SystemCallArchitectures=native
 # sing-box 需要绑定 443 等低端口（已通过 setcap 授权）
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_NET_RAW
 AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_NET_RAW
-# 仅允许写 /etc/sing-box 和日志目录
+# 仅允许写 /etc/sing-box 和日志目录（RuntimeDirectory 已自动允许 /run/sing-box）
 ReadWritePaths=/etc/sing-box /var/log
 
 [Install]
