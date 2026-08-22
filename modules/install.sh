@@ -271,6 +271,12 @@ install_singbox() {
         chown sing-box:sing-box /var/log/sing-box.log 2>/dev/null || true
         chmod 600 /var/log/sing-box.log
 
+        # 预创建 pid 目录（/run 由 root 拥有，sing-box 用户无写权限会导致
+        # supervise-daemon 创建 pidfile 失败，服务启动即失败且日志为空）
+        mkdir -p /run/sing-box 2>/dev/null
+        chown sing-box:sing-box /run/sing-box 2>/dev/null || true
+        chmod 750 /run/sing-box 2>/dev/null
+
         if [[ $ALPINE -eq 1 ]]; then
             cat > /etc/init.d/sing-box << 'EOF'
 #!/sbin/openrc-run
@@ -281,7 +287,8 @@ description="sing-box service"
 command="/usr/local/bin/sing-box"
 command_args="run -c /etc/sing-box/config.json"
 command_user="sing-box:sing-box"
-pidfile="/run/${name}.pid"
+# pidfile 必须放在 sing-box 用户可写目录，否则降权后无法创建 pid，启动即失败
+pidfile="/run/sing-box/${name}.pid"
 output_log="/var/log/sing-box.log"
 error_log="/var/log/sing-box.log"
 required_files="/etc/sing-box/config.json"
@@ -294,6 +301,13 @@ respawn_period=60
 depend() {
     need net
     after firewall
+}
+
+# 启动前确保 pid 目录存在（/run 是 tmpfs，重启后丢失）
+start_pre() {
+    mkdir -p /run/sing-box
+    chown sing-box:sing-box /run/sing-box 2>/dev/null || true
+    chmod 750 /run/sing-box 2>/dev/null || true
 }
 EOF
             chmod +x /etc/init.d/sing-box

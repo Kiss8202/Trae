@@ -1,6 +1,6 @@
 # ==================== sing-box 管理脚本模块 ====================
 # 模块版本号，用于检查模块是否需要更新
-MODULE_VERSION="1.25"
+MODULE_VERSION="1.26"
 
 # ==================== 颜色定义 ====================
 RED='\033[0;31m'
@@ -615,24 +615,33 @@ svc_restart() {
 
 # 输出最近的服务日志用于排错
 # Alpine: OpenRC 服务文件已配置 output_log=/var/log/sing-box.log，优先读它；
+#         为空时尝试 rc-service status（含 supervise-daemon 启动失败原因）；
 #         /var/log/messages 仅在装了 syslog 时才有，作为回退。
 # systemd: journalctl -u sing-box
 show_svc_log() {
     local n="${1:-15}"
     if [[ $ALPINE -eq 1 ]]; then
-        # 优先读服务文件配置的日志（一定存在），再回退 syslog messages
-        if [[ -f /var/log/sing-box.log ]]; then
+        # 1) 优先读服务配置的日志文件
+        if [[ -s /var/log/sing-box.log ]]; then
             tail -n "$n" /var/log/sing-box.log 2>/dev/null
+        # 2) 日志为空时，尝试 rc-service status（supervise-daemon 的 stderr 会在此输出）
+        elif command -v rc-service &>/dev/null; then
+            echo "--- rc-service sing-box status ---"
+            rc-service sing-box status 2>&1 || true
+            echo "--- 日志文件为空，可能进程未成功启动就退出 ---"
+            echo "提示: 手动运行 'rc-service sing-box restart' 查看实时错误"
+        # 3) 回退 syslog messages
         elif [[ -f /var/log/messages ]]; then
             grep sing-box /var/log/messages 2>/dev/null | tail -n "$n"
         else
-            echo "(无可用日志：未找到 /var/log/sing-box.log 或 /var/log/messages)"
+            echo "(无可用日志：sing-box.log 为空且无 syslog)"
+            echo "提示: 手动运行 'rc-service sing-box restart' 查看错误"
         fi
     else
         if command -v journalctl &>/dev/null; then
             journalctl -u sing-box -n "$n" --no-pager 2>/dev/null \
                 || echo "(journalctl 读取失败)"
-        elif [[ -f /var/log/sing-box.log ]]; then
+        elif [[ -s /var/log/sing-box.log ]]; then
             tail -n "$n" /var/log/sing-box.log 2>/dev/null
         else
             echo "(无可用日志)"
