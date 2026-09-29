@@ -401,6 +401,15 @@ EOFSVC
     # ---------- 6. 配置日志清理（首次安装自动设置） ----------
     setup_log_cleanup
 
+    # ---------- 7. 修复存量证书权限（降权后 sing-box 需读取） ----------
+    # 旧版本生成的证书归属 root 且未 chown，降权运行的 sing-box 读不到会启动失败
+    if [[ -d "${CERT_DIR}" ]] && id sing-box &>/dev/null; then
+        chown -R sing-box:sing-box "${CERT_DIR}" 2>/dev/null || true
+        find "${CERT_DIR}" -type d -exec chmod 700 {} \; 2>/dev/null || true
+        find "${CERT_DIR}" -name "private.key" -exec chmod 600 {} \; 2>/dev/null || true
+        find "${CERT_DIR}" -name "cert.pem" -exec chmod 644 {} \; 2>/dev/null || true
+    fi
+
     print_success "sing-box 安装/修复完成"
 }
 # ==================== 证书生成 ====================
@@ -412,6 +421,13 @@ gen_cert_for_sni() {
     if [[ -z "$sni" ]] || [[ "$sni" == *"/"* ]] || [[ "$sni" == *".."* ]]; then
         print_error "SNI 非法: ${sni}（含路径字符，拒绝生成证书）"
         return 1
+    fi
+
+    # 确保 CERT_DIR 父目录存在并设置安全权限（降权后 sing-box 需遍历此目录）
+    mkdir -p "${CERT_DIR}" 2>/dev/null
+    chmod 700 "${CERT_DIR}" 2>/dev/null
+    if id sing-box &>/dev/null; then
+        chown sing-box:sing-box "${CERT_DIR}" 2>/dev/null || true
     fi
 
     if ! mkdir -p "${node_cert_dir}"; then
@@ -430,9 +446,15 @@ gen_cert_for_sni() {
         return 1
     fi
 
-    # 强制权限：private.key 600，cert.pem 644
+    # 强制权限：private.key 600，cert.pem 644，目录 700
+    chmod 700 "${node_cert_dir}" 2>/dev/null
     chmod 600 "${node_cert_dir}/private.key" 2>/dev/null
     chmod 644 "${node_cert_dir}/cert.pem" 2>/dev/null
+    # 降权运行：sing-box 进程需读取证书和私钥，必须 chown 给 sing-box 用户
+    # 否则 private.key 600 归属 root，降权后的 sing-box 读不到，TLS 协议启动失败
+    if id sing-box &>/dev/null; then
+        chown -R sing-box:sing-box "${node_cert_dir}" 2>/dev/null || true
+    fi
 
     print_success "证书生成完成 (${sni}, 有效期100年)"
 }
