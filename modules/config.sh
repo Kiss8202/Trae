@@ -934,6 +934,11 @@ build_outbounds() {
             # 绑定地址在某些网络配置下会导致连接失败 (sing-box issue #3440)
             resolver_strategy="ipv4_only"
             ;;
+        dual|"")
+            # dual 模式：与中转出站保持一致，prefer_ipv4 + fallback_delay
+            resolver_strategy="prefer_ipv4"
+            bind_field=",\"fallback_delay\":\"300ms\""
+            ;;
     esac
 
     local direct_outbound
