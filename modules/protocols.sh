@@ -16,18 +16,19 @@ setup_reality() {
     done
 
     # 询问回落目标（handshake destination）
-    # 默认指向本地回环 + 随机高位未占用端口, 主动探测时不产生任何出站流量 (避免 SNI:443 每日泄漏)
-    local handshake_server="127.0.0.1"
-    local handshake_port
-    handshake_port=$(get_random_handshake_port "$PORT")
+    # Reality 协议要求 handshake dest 必须是可建立 TCP 连接的 TLS 服务
+    #   - 默认指向 SNI:443 (真实站点, 协议正确用法, 伪装性最佳)
+    #   - sing-box 会在 TLS 握手阶段 dial handshake dest, dial 失败 = 所有连接失败 (含合法客户端)
+    #   - 因此 127.0.0.1:黑洞 这种"零出站"配置不可用, 会破坏节点连通性
+    local handshake_server="${SNI}"
+    local handshake_port=443
     echo ""
-    echo -e "${YELLOW}回落目标 (回车默认 ${handshake_server}:${handshake_port}, 无出站流量)${NC}"
-    echo -e "${CYAN}说明: 默认指向本地无服务端口, 主动探测时 TCP 被拒, 不连接外网${NC}"
-    echo -e "${CYAN}端口已随机生成 (高位未占用), 各节点独立, 降低被识别概率${NC}"
-    echo -e "${CYAN}如需伪装成真实站点 (会产生出站流量), 可填 SNI 域名如 ${SNI}:443${NC}"
-    read -p "回落目标 [回车默认 ${handshake_server}:${handshake_port}]: " custom_dest
+    echo -e "${YELLOW}回落目标 (回车默认 ${SNI}:443, Reality 协议标准用法)${NC}"
+    echo -e "${CYAN}说明: 默认指向 SNI 真实站点, 主动探测时透明转发, 节点伪装性最佳${NC}"
+    echo -e "${CYAN}如需自定义回落, 可填 server:port (注意: 必须是可建立 TCP 连接的 TLS 服务)${NC}"
+    read -p "回落目标 [回车默认 ${SNI}:443]: " custom_dest
     if [[ -z "$custom_dest" ]]; then
-        print_info "回落目标: ${handshake_server}:${handshake_port} (无出站流量)"
+        print_info "回落目标: ${handshake_server}:${handshake_port} (Reality 标准用法)"
     else
         if [[ "$custom_dest" == *:* ]]; then
             handshake_server="${custom_dest%%:*}"
@@ -40,7 +41,16 @@ setup_reality() {
             print_warning "端口无效，使用默认 443"
             handshake_port=443
         fi
-        print_info "回落目标: ${handshake_server}:${handshake_port}"
+        # 安全检查: 阻止黑洞配置破坏节点连通性 (Reality 协议要求 handshake dest 可建立 TCP 连接)
+        if [[ "$handshake_server" == "127.0.0.1" || "$handshake_server" == "localhost" || "$handshake_server" == "::1" ]]; then
+            print_error "handshake dest 不能指向本地黑洞 (127.0.0.1/localhost)"
+            print_warning "Reality 协议在 TLS 握手阶段 dial handshake dest, dial 失败 = 所有连接失败 (含合法客户端)"
+            print_info "已回退到默认 ${SNI}:443"
+            handshake_server="${SNI}"
+            handshake_port=443
+        else
+            print_info "回落目标: ${handshake_server}:${handshake_port}"
+        fi
     fi
 
     # 每个节点使用独立UUID
@@ -608,9 +618,8 @@ setup_anytls() {
 
     if [[ "$ENABLE_REALITY" =~ ^[Yy]$ ]]; then
         # AnyTLS + REALITY 入站（无需证书）
-        # handshake 默认指向本地回环 + 随机高位未占用端口, 主动探测时不产生出站流量
-        local anytls_hs_port
-        anytls_hs_port=$(get_random_handshake_port "$PORT")
+        # handshake 默认指向 SNI:443, Reality 协议标准用法
+        # (sing-box 在 TLS 握手阶段会 dial handshake dest, 必须可连通, 否则所有连接失败)
         inbound="{
   \"type\": \"anytls\",
   \"tag\": \"anytls-reality-${PORT}\",
@@ -625,8 +634,8 @@ setup_anytls() {
     \"reality\": {
       \"enabled\": true,
       \"handshake\": {
-        \"server\": \"127.0.0.1\",
-        \"server_port\": ${anytls_hs_port}
+        \"server\": \"${ANYTLS_SNI}\",
+        \"server_port\": 443
       },
       \"private_key\": \"${REALITY_PRIVATE}\",
       \"short_id\": [\"${SHORT_ID}\"]

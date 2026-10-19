@@ -203,13 +203,15 @@ _modify_menu_Reality() {
     local array_idx="$1" tag="$2" port="$3" current_sni="$4" proto="$5"
 
     # 读取当前回落目标
-    # 默认与 setup_reality 保持一致: 127.0.0.1 + 随机高位未占用端口 (本地无服务, 主动探测时连接被拒, 零出站流量)
-    local DEFAULT_HS_SERVER="127.0.0.1"
+    # 默认与 setup_reality 保持一致: SNI:443 (Reality 协议标准用法, 真实站点伪装最佳)
+    # 注意: sing-box 在 TLS 握手阶段会 dial handshake dest, 必须可连通, 否则所有连接失败 (含合法客户端)
+    local DEFAULT_HS_SERVER="$current_sni"
+    local DEFAULT_HS_PORT=443
     local current_hs_server=$(jq -r --arg tag "$tag" '(.inbounds[] | select(.tag == $tag)).tls.reality.handshake.server // ""' "${CONFIG_FILE}" 2>/dev/null)
-    local current_hs_port=$(jq -r --arg tag "$tag" '(.inbounds[] | select(.tag == $tag)).tls.reality.handshake.server_port // 0' "${CONFIG_FILE}" 2>/dev/null)
+    local current_hs_port=$(jq -r --arg tag "$tag" '(.inbounds[] | select(.tag == $tag)).tls.reality.handshake.server_port // '"$DEFAULT_HS_PORT" "${CONFIG_FILE}" 2>/dev/null)
     local current_handshake
-    if [[ -z "$current_hs_server" || "$current_hs_server" == "$DEFAULT_HS_SERVER" ]]; then
-        current_handshake="默认 ${DEFAULT_HS_SERVER}:${current_hs_port} (无出站流量)"
+    if [[ -z "$current_hs_server" || "$current_hs_server" == "$DEFAULT_HS_SERVER" ]] && [[ "$current_hs_port" == "$DEFAULT_HS_PORT" ]]; then
+        current_handshake="默认 (${DEFAULT_HS_SERVER}:${DEFAULT_HS_PORT})"
     else
         current_handshake="${current_hs_server}:${current_hs_port}"
     fi
@@ -267,22 +269,21 @@ _modify_menu_Reality() {
                 _MODIFY_CONFIG_CHANGED=1
                 ;;
             5)
-                echo -e "${YELLOW}新回落目标 (回车恢复默认, 无出站流量)${NC}"
+                echo -e "${YELLOW}新回落目标 (回车恢复默认 ${DEFAULT_HS_SERVER}:${DEFAULT_HS_PORT})${NC}"
                 echo -e "${CYAN}格式: server:port 或 server (默认端口443)${NC}"
-                echo -e "${CYAN}回车=随机生成高位未占用端口 (无出站)${NC}"
-                echo -e "${CYAN}例如: ${current_sni}:443 (伪装真实站点, 会产生出站)${NC}"
+                echo -e "${CYAN}警告: handshake dest 必须是可建立 TCP 连接的 TLS 服务${NC}"
+                echo -e "${CYAN}      指向 127.0.0.1:黑洞 会导致节点完全不通 (Reality 协议要求)${NC}"
+                echo -e "${CYAN}例如: ${current_sni}:443 (默认, 伪装真实站点)${NC}"
                 read -p "回落目标: " new_dest
                 if [[ -z "$new_dest" ]]; then
-                    # 恢复默认: 与 setup_reality 保持一致, 生成新的随机未占用端口
-                    local new_hs_port
-                    new_hs_port=$(get_random_handshake_port "$port")
-                    jq_update_config --arg tag "$tag" --arg server "$DEFAULT_HS_SERVER" --argjson port "$new_hs_port" \
+                    # 恢复默认: SNI:443, Reality 协议标准用法
+                    jq_update_config --arg tag "$tag" --arg server "$DEFAULT_HS_SERVER" --argjson port "$DEFAULT_HS_PORT" \
                         '(.inbounds[] | select(.tag == $tag)) |= (.tls.reality.handshake.server = $server | .tls.reality.handshake.server_port = $port)'
                     current_hs_server="$DEFAULT_HS_SERVER"
-                    current_hs_port="$new_hs_port"
-                    current_handshake="默认 ${DEFAULT_HS_SERVER}:${current_hs_port} (无出站流量)"
+                    current_hs_port="$DEFAULT_HS_PORT"
+                    current_handshake="默认 (${DEFAULT_HS_SERVER}:${DEFAULT_HS_PORT})"
                     _MODIFY_CONFIG_CHANGED=1
-                    print_success "回落目标已恢复默认: ${DEFAULT_HS_SERVER}:${current_hs_port} (无出站流量, 端口已重新随机)"
+                    print_success "回落目标已恢复默认: ${DEFAULT_HS_SERVER}:${DEFAULT_HS_PORT}"
                 else
                     local new_hs_server="${new_dest%%:*}"
                     local new_hs_port="${new_dest##*:}"
@@ -292,6 +293,15 @@ _modify_menu_Reality() {
                     fi
                     if ! [[ "$new_hs_port" =~ ^[0-9]+$ ]] || (( new_hs_port < 1 || new_hs_port > 65535 )); then
                         print_error "端口无效"; continue
+                    fi
+                    # 安全检查: 阻止黑洞配置 (127.0.0.1/localhost + 无服务端口) 破坏节点连通性
+                    # Reality 协议在 TLS 握手阶段 dial handshake dest, dial 失败 = 所有连接失败 (含合法客户端)
+                    if [[ "$new_hs_server" == "127.0.0.1" || "$new_hs_server" == "localhost" || "$new_hs_server" == "::1" ]]; then
+                        print_error "handshake dest 不能指向本地黑洞 (127.0.0.1/localhost)"
+                        print_warning "Reality 协议要求 handshake dest 是可建立 TCP 连接的 TLS 服务"
+                        print_warning "指向本地无服务端口会让节点完全不通"
+                        print_info "建议: 使用 SNI 真实站点, 如 ${current_sni}:443"
+                        continue
                     fi
                     jq_update_config --arg tag "$tag" --arg server "$new_hs_server" --argjson port "$new_hs_port" \
                         '(.inbounds[] | select(.tag == $tag)) |= (.tls.reality.handshake.server = $server | .tls.reality.handshake.server_port = $port)'
