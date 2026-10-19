@@ -203,13 +203,16 @@ _modify_menu_Reality() {
     local array_idx="$1" tag="$2" port="$3" current_sni="$4" proto="$5"
 
     # 读取当前回落目标
+    # 默认与 setup_reality 保持一致: 127.0.0.1:8085 (本地无服务, 主动探测时连接被拒, 零出站流量)
+    local DEFAULT_HS_SERVER="127.0.0.1"
+    local DEFAULT_HS_PORT=8085
     local current_hs_server=$(jq -r --arg tag "$tag" '(.inbounds[] | select(.tag == $tag)).tls.reality.handshake.server // ""' "${CONFIG_FILE}" 2>/dev/null)
-    local current_hs_port=$(jq -r --arg tag "$tag" '(.inbounds[] | select(.tag == $tag)).tls.reality.handshake.server_port // 443' "${CONFIG_FILE}" 2>/dev/null)
+    local current_hs_port=$(jq -r --arg tag "$tag" '(.inbounds[] | select(.tag == $tag)).tls.reality.handshake.server_port // '"$DEFAULT_HS_PORT" "${CONFIG_FILE}" 2>/dev/null)
     local current_handshake
-    if [[ -n "$current_hs_server" && "$current_hs_server" != "$current_sni" ]]; then
-        current_handshake="${current_hs_server}:${current_hs_port}"
+    if [[ -z "$current_hs_server" || "$current_hs_server" == "$DEFAULT_HS_SERVER" ]] && [[ "$current_hs_port" == "$DEFAULT_HS_PORT" ]]; then
+        current_handshake="默认 ${DEFAULT_HS_SERVER}:${DEFAULT_HS_PORT} (无出站流量)"
     else
-        current_handshake="默认 (${current_sni}:443)"
+        current_handshake="${current_hs_server}:${current_hs_port}"
     fi
 
     while true; do
@@ -244,23 +247,15 @@ _modify_menu_Reality() {
                     print_error "SNI 格式无效，已拒绝修改"
                     continue
                 fi
-                # 回落目标为默认时同步更新，自定义时只更新 server_name
-                if [[ "$current_hs_server" == "$current_sni" || -z "$current_hs_server" ]]; then
-                    jq_update_config --arg tag "$tag" --arg sni "$new_sni" \
-                        '(.inbounds[] | select(.tag == $tag)) |= (.tls.server_name = $sni | .tls.reality.handshake.server = $sni)'
-                    current_hs_server="$new_sni"
-                else
-                    jq_update_config --arg tag "$tag" --arg sni "$new_sni" \
-                        '(.inbounds[] | select(.tag == $tag)) |= (.tls.server_name = $sni)'
-                fi
+                # 仅修改 server_name (SNI), 不动 handshake
+                # 解耦原因: handshake 与 SNI 是独立概念
+                #   - handshake 决定主动探测时把流量转发到哪里 (默认 127.0.0.1:8085 无出站)
+                #   - 旧逻辑会同步 handshake 跟随 SNI, 导致改 SNI 后静默产生出站流量, 被攻击时一天可跑几十上百G
+                jq_update_config --arg tag "$tag" --arg sni "$new_sni" \
+                    '(.inbounds[] | select(.tag == $tag)) |= (.tls.server_name = $sni)'
                 INBOUND_SNIS[$array_idx]="$new_sni"
                 current_sni="$new_sni"
-                # 更新回落目标显示
-                if [[ "$current_hs_server" == "$current_sni" || -z "$current_hs_server" ]]; then
-                    current_handshake="默认 (${current_sni}:443)"
-                else
-                    current_handshake="${current_hs_server}:${current_hs_port}"
-                fi
+                # current_handshake 显示保持原样 (handshake 没变)
                 _MODIFY_CONFIG_CHANGED=1
                 print_success "SNI 已修改为 ${new_sni}"
                 ;;
@@ -273,19 +268,19 @@ _modify_menu_Reality() {
                 _MODIFY_CONFIG_CHANGED=1
                 ;;
             5)
-                echo -e "${YELLOW}新回落目标 (回车恢复默认 ${current_sni}:443)${NC}"
+                echo -e "${YELLOW}新回落目标 (回车恢复默认 ${DEFAULT_HS_SERVER}:${DEFAULT_HS_PORT}, 无出站流量)${NC}"
                 echo -e "${CYAN}格式: server:port 或 server (默认端口443)${NC}"
-                echo -e "${CYAN}例如: 127.0.0.1:8085${NC}"
+                echo -e "${CYAN}例如: 127.0.0.1:8085 (无出站) 或 ${current_sni}:443 (伪装真实站点, 会产生出站)${NC}"
                 read -p "回落目标: " new_dest
                 if [[ -z "$new_dest" ]]; then
-                    # 恢复默认
-                    jq_update_config --arg tag "$tag" --arg server "$current_sni" --argjson port 443 \
+                    # 恢复默认: 与 setup_reality 保持一致, 指向本地无服务端口, 零出站流量
+                    jq_update_config --arg tag "$tag" --arg server "$DEFAULT_HS_SERVER" --argjson port "$DEFAULT_HS_PORT" \
                         '(.inbounds[] | select(.tag == $tag)) |= (.tls.reality.handshake.server = $server | .tls.reality.handshake.server_port = $port)'
-                    current_hs_server="$current_sni"
-                    current_hs_port=443
-                    current_handshake="默认 (${current_sni}:443)"
+                    current_hs_server="$DEFAULT_HS_SERVER"
+                    current_hs_port="$DEFAULT_HS_PORT"
+                    current_handshake="默认 ${DEFAULT_HS_SERVER}:${DEFAULT_HS_PORT} (无出站流量)"
                     _MODIFY_CONFIG_CHANGED=1
-                    print_success "回落目标已恢复默认: ${current_sni}:443"
+                    print_success "回落目标已恢复默认: ${DEFAULT_HS_SERVER}:${DEFAULT_HS_PORT} (无出站流量)"
                 else
                     local new_hs_server="${new_dest%%:*}"
                     local new_hs_port="${new_dest##*:}"
@@ -625,8 +620,11 @@ _modify_menu_AnyTLS() {
                     continue
                 fi
                 if [[ $is_reality -eq 1 ]]; then
+                    # 仅修改 server_name (SNI), 不动 handshake
+                    # 解耦原因: setup_anytls 默认硬编码 handshake=127.0.0.1:8085 (无出站)
+                    # 旧逻辑会同步 handshake 跟随 SNI, 静默把流量转向 SNI 站点, 被攻击时一天可跑几十上百G
                     jq_update_config --arg tag "$tag" --arg sni "$new_sni" \
-                        '(.inbounds[] | select(.tag == $tag)) |= (.tls.server_name = $sni | .tls.reality.handshake.server = $sni)'
+                        '(.inbounds[] | select(.tag == $tag)) |= (.tls.server_name = $sni)'
                 else
                     jq_update_config --arg tag "$tag" --arg sni "$new_sni" --arg certdir "$CERT_DIR" \
                         '(.inbounds[] | select(.tag == $tag)) |= (.tls.server_name = $sni | .tls.certificate_path = ($sni | $certdir + "/" + . + "/cert.pem") | .tls.key_path = ($sni | $certdir + "/" + . + "/private.key"))'
@@ -636,7 +634,7 @@ _modify_menu_AnyTLS() {
                 current_sni="$new_sni"
                 _MODIFY_CONFIG_CHANGED=1
                 if [[ $is_reality -eq 1 ]]; then
-                    print_success "SNI 已修改为 ${new_sni}，handshake.server 已同步更新"
+                    print_success "SNI 已修改为 ${new_sni}（handshake 保持不变, 避免静默出站流量）"
                 else
                     print_success "SNI 已修改为 ${new_sni}，证书已重新生成"
                 fi
