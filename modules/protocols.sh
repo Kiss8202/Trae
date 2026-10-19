@@ -16,19 +16,23 @@ setup_reality() {
     done
 
     # 询问回落目标（handshake destination）
-    local handshake_server="${SNI}"
-    local handshake_port=443
+    # 默认指向本地回环, 主动探测时不产生任何出站流量 (避免 notion.so:443 每日泄漏)
+    local handshake_server="127.0.0.1"
+    local handshake_port=8085
     echo ""
-    echo -e "${YELLOW}是否自定义回落目标？(回车默认 ${SNI}:443)${NC}"
-    echo -e "${CYAN}说明: 回落目标决定主动探测时返回的内容，默认转发到 SNI 站点${NC}"
-    echo -e "${CYAN}自定义可指向本地 Web 服务，如 127.0.0.1:8085${NC}"
-    read -p "回落目标 [回车默认]: " custom_dest
-    if [[ -n "$custom_dest" ]]; then
+    echo -e "${YELLOW}回落目标 (回车默认 127.0.0.1:8085, 无出站流量)${NC}"
+    echo -e "${CYAN}说明: 默认指向本地, 主动探测时连接被拒, 不连接外网${NC}"
+    echo -e "${CYAN}如需伪装成真实站点 (会产生出站流量), 可填 SNI 域名如 ${SNI}:443${NC}"
+    read -p "回落目标 [回车默认 127.0.0.1:8085]: " custom_dest
+    if [[ -z "$custom_dest" ]]; then
+        print_info "回落目标: ${handshake_server}:${handshake_port} (无出站流量)"
+    else
         if [[ "$custom_dest" == *:* ]]; then
             handshake_server="${custom_dest%%:*}"
             handshake_port="${custom_dest##*:}"
         else
             handshake_server="$custom_dest"
+            handshake_port=443
         fi
         if ! [[ "$handshake_port" =~ ^[0-9]+$ ]] || (( handshake_port < 1 || handshake_port > 65535 )); then
             print_warning "端口无效，使用默认 443"
@@ -201,9 +205,7 @@ setup_hysteria2() {
     \"key_path\": \"${CERT_DIR}/${HY2_SNI}/private.key\"
   }${obfs_config},
   \"masquerade\": {
-    \"type\": \"proxy\",
-    \"url\": \"https://www.bing.com\",
-    \"rewrite_host\": true
+    \"type\": \"404\"
   }
 }"
     
@@ -604,6 +606,7 @@ setup_anytls() {
 
     if [[ "$ENABLE_REALITY" =~ ^[Yy]$ ]]; then
         # AnyTLS + REALITY 入站（无需证书）
+        # handshake 默认指向本地回环, 主动探测时不产生出站流量
         inbound="{
   \"type\": \"anytls\",
   \"tag\": \"anytls-reality-${PORT}\",
@@ -618,8 +621,8 @@ setup_anytls() {
     \"reality\": {
       \"enabled\": true,
       \"handshake\": {
-        \"server\": \"${ANYTLS_SNI}\",
-        \"server_port\": 443
+        \"server\": \"127.0.0.1\",
+        \"server_port\": 8085
       },
       \"private_key\": \"${REALITY_PRIVATE}\",
       \"short_id\": [\"${SHORT_ID}\"]
