@@ -102,6 +102,35 @@ if [[ -z "${TRAP_SET:-}" ]]; then
     TRAP_SET=1
 fi
 
+# ==================== 随机生成 Reality 回落黑洞端口 ====================
+# 用法: get_random_handshake_port [avoid_port]
+# 功能: 返回一个本地未占用的高位随机端口 (10000-65535), 用于 Reality/AnyTLS+REALITY 的 handshake.server_port
+# 设计: 默认指向 127.0.0.1:<随机端口>, 端口上无服务监听 -> 主动探测时 TCP RST, 零出站流量
+# 避开: 已占用端口, sing-box 自身监听端口, 用户指定端口 (如该节点 listen_port)
+get_random_handshake_port() {
+    local avoid_port="${1:-}"
+    local max_attempts=100
+    local p
+    # 收集本机已监听的 TCP 端口 (ss 可能不存在, 兼容 netstat, 都没有就纯随机)
+    local used_ports=""
+    if command -v ss &>/dev/null; then
+        used_ports=$(ss -tlnH 2>/dev/null | awk '{print $4}' | awk -F: '{print $NF}' | sort -u | tr '\n' ' ')
+    elif command -v netstat &>/dev/null; then
+        used_ports=$(netstat -tln 2>/dev/null | awk '{print $4}' | awk -F: '{print $NF}' | sort -u | tr '\n' ' ')
+    fi
+    for ((i=0; i<max_attempts; i++)); do
+        # 高位端口区间 10000-65535, 避开常见服务端口
+        p=$(( (RANDOM << 15 | RANDOM) % 55536 + 10000 ))
+        [[ "$p" -eq "$avoid_port" ]] && continue
+        # 已占用则跳过
+        [[ " $used_ports " == *" $p "* ]] && continue
+        echo "$p"
+        return 0
+    done
+    # 兜底: 退回原固定端口 (最后回退方案)
+    echo "8085"
+}
+
 # ==================== jq 配置文件原子更新 ====================
 # 用法: jq_update_config <jq参数...>
 # 功能: 原子性更新配置文件，临时文件与目标同目录保证 mv 原子替换，失败时保留原文件

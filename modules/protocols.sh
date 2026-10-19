@@ -16,14 +16,16 @@ setup_reality() {
     done
 
     # 询问回落目标（handshake destination）
-    # 默认指向本地回环, 主动探测时不产生任何出站流量 (避免 notion.so:443 每日泄漏)
+    # 默认指向本地回环 + 随机高位未占用端口, 主动探测时不产生任何出站流量 (避免 SNI:443 每日泄漏)
     local handshake_server="127.0.0.1"
-    local handshake_port=8085
+    local handshake_port
+    handshake_port=$(get_random_handshake_port "$PORT")
     echo ""
-    echo -e "${YELLOW}回落目标 (回车默认 127.0.0.1:8085, 无出站流量)${NC}"
-    echo -e "${CYAN}说明: 默认指向本地, 主动探测时连接被拒, 不连接外网${NC}"
+    echo -e "${YELLOW}回落目标 (回车默认 ${handshake_server}:${handshake_port}, 无出站流量)${NC}"
+    echo -e "${CYAN}说明: 默认指向本地无服务端口, 主动探测时 TCP 被拒, 不连接外网${NC}"
+    echo -e "${CYAN}端口已随机生成 (高位未占用), 各节点独立, 降低被识别概率${NC}"
     echo -e "${CYAN}如需伪装成真实站点 (会产生出站流量), 可填 SNI 域名如 ${SNI}:443${NC}"
-    read -p "回落目标 [回车默认 127.0.0.1:8085]: " custom_dest
+    read -p "回落目标 [回车默认 ${handshake_server}:${handshake_port}]: " custom_dest
     if [[ -z "$custom_dest" ]]; then
         print_info "回落目标: ${handshake_server}:${handshake_port} (无出站流量)"
     else
@@ -606,7 +608,9 @@ setup_anytls() {
 
     if [[ "$ENABLE_REALITY" =~ ^[Yy]$ ]]; then
         # AnyTLS + REALITY 入站（无需证书）
-        # handshake 默认指向本地回环, 主动探测时不产生出站流量
+        # handshake 默认指向本地回环 + 随机高位未占用端口, 主动探测时不产生出站流量
+        local anytls_hs_port
+        anytls_hs_port=$(get_random_handshake_port "$PORT")
         inbound="{
   \"type\": \"anytls\",
   \"tag\": \"anytls-reality-${PORT}\",
@@ -622,7 +626,7 @@ setup_anytls() {
       \"enabled\": true,
       \"handshake\": {
         \"server\": \"127.0.0.1\",
-        \"server_port\": 8085
+        \"server_port\": ${anytls_hs_port}
       },
       \"private_key\": \"${REALITY_PRIVATE}\",
       \"short_id\": [\"${SHORT_ID}\"]

@@ -203,14 +203,13 @@ _modify_menu_Reality() {
     local array_idx="$1" tag="$2" port="$3" current_sni="$4" proto="$5"
 
     # 读取当前回落目标
-    # 默认与 setup_reality 保持一致: 127.0.0.1:8085 (本地无服务, 主动探测时连接被拒, 零出站流量)
+    # 默认与 setup_reality 保持一致: 127.0.0.1 + 随机高位未占用端口 (本地无服务, 主动探测时连接被拒, 零出站流量)
     local DEFAULT_HS_SERVER="127.0.0.1"
-    local DEFAULT_HS_PORT=8085
     local current_hs_server=$(jq -r --arg tag "$tag" '(.inbounds[] | select(.tag == $tag)).tls.reality.handshake.server // ""' "${CONFIG_FILE}" 2>/dev/null)
-    local current_hs_port=$(jq -r --arg tag "$tag" '(.inbounds[] | select(.tag == $tag)).tls.reality.handshake.server_port // '"$DEFAULT_HS_PORT" "${CONFIG_FILE}" 2>/dev/null)
+    local current_hs_port=$(jq -r --arg tag "$tag" '(.inbounds[] | select(.tag == $tag)).tls.reality.handshake.server_port // 0' "${CONFIG_FILE}" 2>/dev/null)
     local current_handshake
-    if [[ -z "$current_hs_server" || "$current_hs_server" == "$DEFAULT_HS_SERVER" ]] && [[ "$current_hs_port" == "$DEFAULT_HS_PORT" ]]; then
-        current_handshake="默认 ${DEFAULT_HS_SERVER}:${DEFAULT_HS_PORT} (无出站流量)"
+    if [[ -z "$current_hs_server" || "$current_hs_server" == "$DEFAULT_HS_SERVER" ]]; then
+        current_handshake="默认 ${DEFAULT_HS_SERVER}:${current_hs_port} (无出站流量)"
     else
         current_handshake="${current_hs_server}:${current_hs_port}"
     fi
@@ -268,19 +267,22 @@ _modify_menu_Reality() {
                 _MODIFY_CONFIG_CHANGED=1
                 ;;
             5)
-                echo -e "${YELLOW}新回落目标 (回车恢复默认 ${DEFAULT_HS_SERVER}:${DEFAULT_HS_PORT}, 无出站流量)${NC}"
+                echo -e "${YELLOW}新回落目标 (回车恢复默认, 无出站流量)${NC}"
                 echo -e "${CYAN}格式: server:port 或 server (默认端口443)${NC}"
-                echo -e "${CYAN}例如: 127.0.0.1:8085 (无出站) 或 ${current_sni}:443 (伪装真实站点, 会产生出站)${NC}"
+                echo -e "${CYAN}回车=随机生成高位未占用端口 (无出站)${NC}"
+                echo -e "${CYAN}例如: ${current_sni}:443 (伪装真实站点, 会产生出站)${NC}"
                 read -p "回落目标: " new_dest
                 if [[ -z "$new_dest" ]]; then
-                    # 恢复默认: 与 setup_reality 保持一致, 指向本地无服务端口, 零出站流量
-                    jq_update_config --arg tag "$tag" --arg server "$DEFAULT_HS_SERVER" --argjson port "$DEFAULT_HS_PORT" \
+                    # 恢复默认: 与 setup_reality 保持一致, 生成新的随机未占用端口
+                    local new_hs_port
+                    new_hs_port=$(get_random_handshake_port "$port")
+                    jq_update_config --arg tag "$tag" --arg server "$DEFAULT_HS_SERVER" --argjson port "$new_hs_port" \
                         '(.inbounds[] | select(.tag == $tag)) |= (.tls.reality.handshake.server = $server | .tls.reality.handshake.server_port = $port)'
                     current_hs_server="$DEFAULT_HS_SERVER"
-                    current_hs_port="$DEFAULT_HS_PORT"
-                    current_handshake="默认 ${DEFAULT_HS_SERVER}:${DEFAULT_HS_PORT} (无出站流量)"
+                    current_hs_port="$new_hs_port"
+                    current_handshake="默认 ${DEFAULT_HS_SERVER}:${current_hs_port} (无出站流量)"
                     _MODIFY_CONFIG_CHANGED=1
-                    print_success "回落目标已恢复默认: ${DEFAULT_HS_SERVER}:${DEFAULT_HS_PORT} (无出站流量)"
+                    print_success "回落目标已恢复默认: ${DEFAULT_HS_SERVER}:${current_hs_port} (无出站流量, 端口已重新随机)"
                 else
                     local new_hs_server="${new_dest%%:*}"
                     local new_hs_port="${new_dest##*:}"
