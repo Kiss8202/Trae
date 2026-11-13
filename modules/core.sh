@@ -83,8 +83,8 @@ REALITY_PUBLIC=""
 SHORT_ID=""
 
 # 默认SNI
-DEFAULT_SNI="www.notion.so"
-DEFAULT_SNI1="www.notion.so,www.atlassian.com"
+DEFAULT_SNI="www.washington.edu"
+DEFAULT_SNI1="www.washington.edu,www.atlassian.com"
 
 # Alpine 标记
 ALPINE=0
